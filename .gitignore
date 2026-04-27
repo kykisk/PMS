@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.env.*
+*.log
+nohup.out
+coverage/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+test-results/
+playwright-report/
+ui-review/
+*.db
