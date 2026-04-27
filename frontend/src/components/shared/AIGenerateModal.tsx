@@ -1,0 +1,143 @@
+import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
+import { Sparkles, CheckSquare, Square, AlertCircle, Loader2 } from 'lucide-react'
+import { Modal } from './Modal'
+import { Button } from '@/components/ui/button'
+import apiClient from '@/api/client'
+
+interface GeneratedItem {
+  title: string
+  description?: string
+  [key: string]: any
+  _selected?: boolean
+  _rawText?: string
+  _parseError?: boolean
+}
+
+interface Props {
+  open: boolean
+  onClose: () => void
+  title: string
+  projectId: string
+  endpoint: string
+  payload: Record<string, any>
+  onConfirm: (items: GeneratedItem[]) => void | Promise<void>
+  renderItem?: (item: GeneratedItem) => React.ReactNode
+}
+
+export function AIGenerateModal({ open, onClose, title, projectId, endpoint, payload, onConfirm, renderItem }: Props) {
+  const [items, setItems] = useState<GeneratedItem[]>([])
+  const [generated, setGenerated] = useState(false)
+  const [rawText, setRawText] = useState('')
+
+  const generateMutation = useMutation({
+    mutationFn: () => apiClient.post(`/projects/${projectId}/${endpoint}`, payload).then(r => r.data),
+    onSuccess: (data: any) => {
+      if (Array.isArray(data)) {
+        if (data[0]?._parseError) {
+          setRawText(data[0]._rawText ?? '')
+          setItems([])
+        } else {
+          setItems(data.map((item: any) => ({ ...item, _selected: true })))
+          setRawText('')
+        }
+      }
+      setGenerated(true)
+    },
+  })
+
+  const toggle = (i: number) => setItems(prev => prev.map((item, idx) => idx === i ? { ...item, _selected: !item._selected } : item))
+  const toggleAll = () => {
+    const allSelected = items.every(i => i._selected)
+    setItems(prev => prev.map(i => ({ ...i, _selected: !allSelected })))
+  }
+
+  const handleConfirm = async () => {
+    const selected = items.filter(i => i._selected)
+    await onConfirm(selected)
+    handleClose()
+  }
+
+  const handleClose = () => {
+    setItems([])
+    setGenerated(false)
+    setRawText('')
+    onClose()
+  }
+
+  return (
+    <Modal open={open} onClose={handleClose} title={title} className="max-w-2xl">
+      <div className="space-y-4">
+        {!generated ? (
+          <div className="text-center py-8">
+            <Sparkles size={32} className="mx-auto mb-3 text-blue-400" />
+            <p className="text-gray-600 mb-4">AI가 자동으로 초안을 생성합니다.<br />생성된 결과를 검토하고 선택 후 확정하세요.</p>
+            <Button
+              disabled={generateMutation.isPending}
+              onClick={() => generateMutation.mutate()}
+              className="gap-2"
+            >
+              {generateMutation.isPending ? <><Loader2 size={16} className="animate-spin" />생성 중...</> : <><Sparkles size={16} />AI 생성 시작</>}
+            </Button>
+          </div>
+        ) : rawText ? (
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-700">
+              <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+              <p>응답 파싱에 실패했습니다. 아래 원본 텍스트를 수동으로 편집하세요.</p>
+            </div>
+            <textarea
+              className="w-full border rounded-md p-3 text-sm font-mono resize-none"
+              rows={10}
+              value={rawText}
+              onChange={e => setRawText(e.target.value)}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={handleClose}>닫기</Button>
+              <Button onClick={() => { generateMutation.mutate() }}>재시도</Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-600">{items.length}개 생성됨 — 체크 해제로 제외 가능</p>
+              <button onClick={toggleAll} className="text-xs text-blue-600 hover:underline">
+                {items.every(i => i._selected) ? '전체 해제' : '전체 선택'}
+              </button>
+            </div>
+            <div className="max-h-72 overflow-y-auto space-y-2">
+              {items.map((item, i) => (
+                <div
+                  key={i}
+                  onClick={() => toggle(i)}
+                  className={`flex items-start gap-3 p-3 rounded border cursor-pointer transition-colors ${item._selected ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200 opacity-60'}`}
+                >
+                  <div className="mt-0.5 flex-shrink-0">
+                    {item._selected ? <CheckSquare size={16} className="text-blue-600" /> : <Square size={16} className="text-gray-400" />}
+                  </div>
+                  <div className="flex-1">
+                    {renderItem ? renderItem(item) : (
+                      <>
+                        <p className="font-medium text-sm">{item.title}</p>
+                        {item.description && <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>}
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between items-center pt-2">
+              <Button variant="outline" size="sm" onClick={() => { setGenerated(false); setItems([]) }}>다시 생성</Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handleClose}>취소</Button>
+                <Button disabled={items.filter(i => i._selected).length === 0} onClick={handleConfirm}>
+                  ✅ {items.filter(i => i._selected).length}개 확정 저장
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}

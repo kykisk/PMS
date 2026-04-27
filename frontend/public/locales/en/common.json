@@ -1,0 +1,54 @@
+{
+  "app": {
+    "name": "PMS",
+    "tagline": "Project Management System"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "requirements": "Requirements",
+    "features": "Features",
+    "tasks": "Tasks",
+    "tests": "Tests",
+    "traceability": "Traceability",
+    "admin": "Admin"
+  },
+  "auth": {
+    "login": "Login",
+    "logout": "Logout",
+    "register": "Register",
+    "email": "Email",
+    "password": "Password",
+    "name": "Name",
+    "loginTitle": "PMS Login",
+    "registerTitle": "Register",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "all": "All",
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "success": "Success",
+    "confirm": "Confirm",
+    "back": "Back"
+  },
+  "status": {
+    "new": "New",
+    "review": "In Review",
+    "confirmed": "Confirmed",
+    "changed": "Changed",
+    "deleted": "Deleted"
+  },
+  "priority": {
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low"
+  }
+}

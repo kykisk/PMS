@@ -1,0 +1,54 @@
+{
+  "app": {
+    "name": "PMS",
+    "tagline": "프로젝트 관리 시스템"
+  },
+  "nav": {
+    "dashboard": "대시보드",
+    "requirements": "요구사항",
+    "features": "기능 리스트",
+    "tasks": "Task",
+    "tests": "테스트",
+    "traceability": "추적성",
+    "admin": "관리자"
+  },
+  "auth": {
+    "login": "로그인",
+    "logout": "로그아웃",
+    "register": "회원가입",
+    "email": "이메일",
+    "password": "비밀번호",
+    "name": "이름",
+    "loginTitle": "PMS 로그인",
+    "registerTitle": "회원가입",
+    "noAccount": "계정이 없으신가요?",
+    "hasAccount": "이미 계정이 있으신가요?"
+  },
+  "common": {
+    "save": "저장",
+    "cancel": "취소",
+    "delete": "삭제",
+    "edit": "수정",
+    "create": "생성",
+    "search": "검색",
+    "filter": "필터",
+    "all": "전체",
+    "loading": "로딩중...",
+    "error": "오류가 발생했습니다",
+    "success": "완료되었습니다",
+    "confirm": "확인",
+    "back": "뒤로"
+  },
+  "status": {
+    "new": "신규",
+    "review": "검토중",
+    "confirmed": "확정",
+    "changed": "변경",
+    "deleted": "삭제"
+  },
+  "priority": {
+    "high": "높음",
+    "medium": "중간",
+    "low": "낮음"
+  }
+}
