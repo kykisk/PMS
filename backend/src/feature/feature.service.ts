@@ -85,21 +85,34 @@ export class FeatureService {
     return this.prisma.feature.delete({ where: { id: featureId } });
   }
 
-  async uploadScreenDesign(projectId: string, featureId: string, file: Express.Multer.File) {
+  async uploadScreenImages(projectId: string, featureId: string, files: Express.Multer.File[]) {
     await this.findOne(projectId, featureId);
-
     const uploadDir = path.join(process.cwd(), 'uploads', projectId, featureId);
     fs.mkdirSync(uploadDir, { recursive: true });
+    const saved: any[] = [];
+    for (const file of files) {
+      const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}-${file.originalname}`;
+      const filePath = path.join(uploadDir, filename);
+      fs.writeFileSync(filePath, file.buffer);
+      const url = `/uploads/${projectId}/${featureId}/${filename}`;
+      const img = await this.prisma.screenImage.create({
+        data: { featureId, filename, originalName: file.originalname, url, size: file.size, mimeType: file.mimetype },
+      });
+      saved.push(img as any);
+    }
+    return saved;
+  }
 
-    const filename = `${Date.now()}-${file.originalname}`;
-    const filePath = path.join(uploadDir, filename);
-    fs.writeFileSync(filePath, file.buffer);
+  async listScreenImages(featureId: string) {
+    return this.prisma.screenImage.findMany({ where: { featureId }, orderBy: { createdAt: 'asc' } });
+  }
 
-    const relativePath = `/uploads/${projectId}/${featureId}/${filename}`;
-    return this.prisma.feature.update({
-      where: { id: featureId },
-      data: { screenDesign: relativePath },
-    });
+  async deleteScreenImage(featureId: string, imageId: string) {
+    const img = await this.prisma.screenImage.findFirst({ where: { id: imageId, featureId } });
+    if (!img) return;
+    const fullPath = path.join(process.cwd(), img.url.replace(/^\//, ''));
+    try { fs.unlinkSync(fullPath); } catch {}
+    return this.prisma.screenImage.delete({ where: { id: imageId } });
   }
 
   async linkRequirement(projectId: string, featureId: string, reqId: string) {

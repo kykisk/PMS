@@ -16,10 +16,10 @@ export interface AdminUser {
 }
 
 export const PROVIDER_MODELS: Record<string, string[]> = {
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-  anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'],
-  gemini: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash'],
-  bedrock: ['anthropic.claude-3-5-sonnet-20241022-v2:0', 'amazon.titan-text-express-v1', 'meta.llama3-70b-instruct-v1:0'],
+  openai: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'o4-mini', 'o3', 'o3-mini', 'gpt-4-turbo'],
+  anthropic: ['claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022'],
+  gemini: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+  bedrock: ['us.anthropic.claude-sonnet-4-20250514-v1:0', 'us.anthropic.claude-opus-4-20250514-v1:0', 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', 'us.amazon.nova-pro-v1:0', 'us.meta.llama4-scout-17b-instruct-v1:0'],
 }
 
 export interface ExportTemplateColumn {
@@ -41,8 +41,11 @@ export const adminApi = {
   listTemplates: () => apiClient.get<ExportTemplate[]>('/admin/templates').then(r => r.data),
   updateTemplate: (id: string, data: { title?: string; columns?: ExportTemplateColumn[] }) =>
     apiClient.put<ExportTemplate>(`/admin/templates/${id}`, data).then(r => r.data),
+  listLLMAccess: () => apiClient.get('/admin/llm-access').then(r => r.data),
+  grantLLMAccess: (userId: string, llmConfigId: string) => apiClient.post('/admin/llm-access', { userId, llmConfigId }).then(r => r.data),
+  revokeLLMAccess: (userId: string, llmConfigId: string) => apiClient.delete(`/admin/llm-access/${userId}/${llmConfigId}`).then(r => r.data),
 }
 
 export const aiStatusApi = {
-  check: (projectId: string) => apiClient.get<{ configured: boolean }>(`/projects/${projectId}/ai/status`).then(r => r.data),
+  check: (projectId: string) => apiClient.get<{ configured: boolean; models: { id: string; label: string; type: string }[] }>(`/projects/${projectId}/ai/status`).then(r => r.data),
 }

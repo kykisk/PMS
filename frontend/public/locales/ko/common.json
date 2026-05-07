@@ -10,6 +10,11 @@
     "tasks": "Task",
     "tests": "테스트",
     "traceability": "추적성",
+    "design": "설계",
+    "useCases": "Use Case",
+    "userStories": "User Story",
+    "changeRequests": "변경요청",
+    "settings": "프로젝트 개요",
     "admin": "관리자"
   },
   "auth": {

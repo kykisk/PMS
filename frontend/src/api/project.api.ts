@@ -21,7 +21,8 @@ export interface CreateProjectPayload {
 }
 
 export const projectApi = {
-  list: () => apiClient.get<Project[]>('/projects').then(r => r.data),
+  list: (query?: { search?: string; status?: string; from?: string; to?: string }) =>
+    apiClient.get<Project[]>('/projects', { params: query }).then(r => r.data),
   get: (id: string) => apiClient.get<Project>(`/projects/${id}`).then(r => r.data),
   create: (data: CreateProjectPayload) => apiClient.post<Project>('/projects', data).then(r => r.data),
   update: (id: string, data: Partial<CreateProjectPayload & { status: string }>) =>
@@ -33,4 +34,14 @@ export const projectApi = {
     apiClient.post(`/projects/${id}/members`, { userId }).then(r => r.data),
   removeMember: (id: string, userId: string) =>
     apiClient.delete(`/projects/${id}/members/${userId}`).then(r => r.data),
+  getSettings: (projectId: string) =>
+    apiClient.get(`/projects/${projectId}/settings`).then(r => r.data),
+  updateMemberRole: (projectId: string, userId: string, data: { role: string; note?: string }) =>
+    apiClient.put(`/projects/${projectId}/members/${userId}/role`, data).then(r => r.data),
+  createExternalMember: (projectId: string, data: any) =>
+    apiClient.post(`/projects/${projectId}/external-members`, data).then(r => r.data),
+  updateExternalMember: (projectId: string, eid: string, data: any) =>
+    apiClient.put(`/projects/${projectId}/external-members/${eid}`, data).then(r => r.data),
+  deleteExternalMember: (projectId: string, eid: string) =>
+    apiClient.delete(`/projects/${projectId}/external-members/${eid}`).then(r => r.data),
 }

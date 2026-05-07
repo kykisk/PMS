@@ -10,6 +10,11 @@
     "tasks": "Tasks",
     "tests": "Tests",
     "traceability": "Traceability",
+    "design": "Design",
+    "useCases": "Use Cases",
+    "userStories": "User Stories",
+    "changeRequests": "Change Requests",
+    "settings": "Overview",
     "admin": "Admin"
   },
   "auth": {

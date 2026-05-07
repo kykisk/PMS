@@ -15,6 +15,11 @@ const TaskDetailPage = lazy(() => import('@/routes/projects/tasks/TaskDetailPage
 const TestListPage = lazy(() => import('@/routes/projects/tests/TestListPage'))
 const TestDetailPage = lazy(() => import('@/routes/projects/tests/TestDetailPage'))
 const RTMPage = lazy(() => import('@/routes/projects/traceability/RTMPage'))
+const DesignPage = lazy(() => import('@/routes/projects/design/DesignPage'))
+const ChangeRequestPage = lazy(() => import('@/routes/projects/change-requests/ChangeRequestPage'))
+const UseCasePage = lazy(() => import('./routes/projects/use-cases/UseCasePage'))
+const UserStoryPage = lazy(() => import('./routes/projects/user-stories/UserStoryPage'))
+const ProjectSettingsPage = lazy(() => import('./routes/projects/settings/SettingsPage'))
 const AdminPage = lazy(() => import('@/routes/admin/AdminPage'))
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -45,6 +50,11 @@ function App() {
           <Route path="/projects/:projectId/tests" element={<PrivateRoute><TestListPage /></PrivateRoute>} />
           <Route path="/projects/:projectId/tests/:scenarioId" element={<PrivateRoute><TestDetailPage /></PrivateRoute>} />
           <Route path="/projects/:projectId/traceability" element={<PrivateRoute><RTMPage /></PrivateRoute>} />
+          <Route path="/projects/:projectId/design" element={<PrivateRoute><DesignPage /></PrivateRoute>} />
+          <Route path="/projects/:projectId/use-cases" element={<PrivateRoute><UseCasePage /></PrivateRoute>} />
+          <Route path="/projects/:projectId/user-stories" element={<PrivateRoute><UserStoryPage /></PrivateRoute>} />
+          <Route path="/projects/:projectId/change-requests" element={<PrivateRoute><ChangeRequestPage /></PrivateRoute>} />
+          <Route path="/projects/:projectId/settings" element={<PrivateRoute><ProjectSettingsPage /></PrivateRoute>} />
           <Route path="/admin" element={<PrivateRoute><AdminPage /></PrivateRoute>} />
           <Route path="/" element={<Navigate to="/projects" replace />} />
         </Routes>

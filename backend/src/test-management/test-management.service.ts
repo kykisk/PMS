@@ -9,8 +9,14 @@ export class TestManagementService {
   constructor(private prisma: PrismaService) {}
 
   private async nextScenarioCode(projectId: string): Promise<string> {
-    const count = await this.prisma.testScenario.count({ where: { projectId } });
-    return `TS-${String(count + 1).padStart(3, '0')}`;
+    const last = await this.prisma.testScenario.findFirst({
+      where: { projectId },
+      orderBy: { code: 'desc' },
+      select: { code: true },
+    });
+    if (!last) return 'TS-001';
+    const num = parseInt(last.code.replace('TS-', ''), 10) || 0;
+    return `TS-${String(num + 1).padStart(3, '0')}`;
   }
 
   private async nextCaseCode(): Promise<string> {
@@ -19,24 +25,31 @@ export class TestManagementService {
   }
 
   async createScenario(projectId: string, dto: CreateScenarioDto) {
-    const code = await this.nextScenarioCode(projectId);
-    return this.prisma.testScenario.create({
-      data: {
-        projectId,
-        code,
-        title: dto.title,
-        description: dto.description,
-        type: dto.type ?? 'integration',
-        testData: dto.testData,
-        reqId: dto.reqId || undefined,
-        featureId: dto.featureId || undefined,
-        status: 'draft',
-      },
-      include: {
-        testCases: true,
-        feature: { select: { id: true, code: true, title: true } },
-      },
-    });
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = await this.nextScenarioCode(projectId);
+      try {
+        return await this.prisma.testScenario.create({
+          data: {
+            projectId, code,
+            title: dto.title,
+            description: dto.description,
+            type: dto.type ?? 'integration',
+            testData: dto.testData,
+            reqId: dto.reqId || undefined,
+            featureId: dto.featureId || undefined,
+            status: 'draft',
+          },
+          include: {
+            testCases: true,
+            requirement: { select: { id: true, code: true, title: true } },
+            feature: { select: { id: true, code: true, title: true } },
+          },
+        });
+      } catch (e: any) {
+        if (e?.code === 'P2002' && attempt < 4) continue;
+        throw e;
+      }
+    }
   }
 
   async findAllScenarios(projectId: string, query: { reqId?: string; featureId?: string; type?: string; search?: string; page?: number; limit?: number }) {
@@ -58,7 +71,9 @@ export class TestManagementService {
         where,
         include: {
           testCases: { select: { id: true, title: true, result: true, status: true } },
-          feature: { select: { id: true, code: true, title: true } },
+          requirement: { select: { id: true, code: true, title: true } },
+          feature: { select: { id: true, code: true, title: true, reqId: true,
+            requirement: { select: { id: true, code: true, title: true } } } },
           _count: { select: { testCases: true } },
         },
         orderBy: { createdAt: 'asc' },

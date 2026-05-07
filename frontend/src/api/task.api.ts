@@ -55,7 +55,7 @@ export interface IssuePayload {
 import { type PaginatedResponse } from './requirement.api'
 
 export const taskApi = {
-  list: (projectId: string, query?: { featureId?: string; status?: string; search?: string; page?: number }) =>
+  list: (projectId: string, query?: { featureId?: string; status?: string; search?: string; page?: number; limit?: number }) =>
     apiClient.get<PaginatedResponse<Task>>(`/projects/${projectId}/tasks`, { params: query }).then(r => r.data),
   get: (projectId: string, taskId: string) =>
     apiClient.get<Task>(`/projects/${projectId}/tasks/${taskId}`).then(r => r.data),

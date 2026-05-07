@@ -10,7 +10,7 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 function getJwt() {
-  const store = JSON.parse(localStorage.getItem('auth-storage') || '{}');
+  const store = JSON.parse(localStorage.getItem('pms-auth') || '{}');
   return store?.state?.accessToken ?? '';
 }
 
@@ -85,6 +85,8 @@ export const exportApi = {
   wbs: (projectId: string) => fetchExcel(`/projects/${projectId}/export/wbs`, 'wbs.xlsx'),
   rtm: (projectId: string) => fetchExcel(`/projects/${projectId}/export/rtm`, 'rtm.xlsx'),
   testPlan: (projectId: string) => fetchExcel(`/projects/${projectId}/export/test-plan`, 'test-plan.xlsx'),
+  dbDesign: (projectId: string) => fetchExcel(`/projects/${projectId}/export/db-design`, 'db-design.xlsx'),
+  apiDesign: (projectId: string) => fetchExcel(`/projects/${projectId}/export/api-design`, 'api-design.xlsx'),
   requirementsPdf,
   wbsPdf,
   rtmPdf,

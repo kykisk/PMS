@@ -50,6 +50,37 @@ export class AdminService {
     return this.prisma.user.delete({ where: { id } });
   }
 
+  async listLLMAccess() {
+    return this.prisma.userLLMAccess.findMany({
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        llmConfig: { select: { id: true, provider: true, model: true } },
+      },
+      orderBy: { grantedAt: 'desc' },
+    });
+  }
+
+  async grantLLMAccess(userId: string, llmConfigId: string) {
+    return this.prisma.userLLMAccess.upsert({
+      where: { userId_llmConfigId: { userId, llmConfigId } },
+      update: {},
+      create: { userId, llmConfigId },
+    });
+  }
+
+  async revokeLLMAccess(userId: string, llmConfigId: string) {
+    return this.prisma.userLLMAccess.delete({
+      where: { userId_llmConfigId: { userId, llmConfigId } },
+    }).catch(() => null);
+  }
+
+  async getUserLLMAccess(userId: string) {
+    return this.prisma.userLLMAccess.findMany({
+      where: { userId },
+      include: { llmConfig: { select: { id: true, provider: true, model: true, isActive: true } } },
+    });
+  }
+
   async getExportTemplates() {
     return (this.prisma as any).exportTemplate.findMany({ orderBy: { createdAt: 'asc' } });
   }

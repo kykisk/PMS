@@ -62,4 +62,20 @@ export class ExportController {
   @Get('test-plan-json')
   @ApiOperation({ summary: '테스트 계획서 JSON (PDF용)' })
   testPlanJson(@Param('projectId') pid: string) { return this.svc.testPlanJson(pid); }
+
+  @Get('db-design')
+  @ApiOperation({ summary: 'DB 정의서 Excel 다운로드' })
+  async dbDesign(@Param('projectId') pid: string, @Res() res: Response) {
+    const buf = await this.svc.dbDesignExcel(pid);
+    res.set({ ...EXCEL_HEADERS, 'Content-Disposition': 'attachment; filename="db-design.xlsx"' });
+    res.send(buf);
+  }
+
+  @Get('api-design')
+  @ApiOperation({ summary: 'API 명세서 Excel 다운로드' })
+  async apiDesign(@Param('projectId') pid: string, @Res() res: Response) {
+    const buf = await this.svc.apiDesignExcel(pid);
+    res.set({ ...EXCEL_HEADERS, 'Content-Disposition': 'attachment; filename="api-design.xlsx"' });
+    res.send(buf);
+  }
 }

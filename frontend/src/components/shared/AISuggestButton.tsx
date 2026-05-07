@@ -9,16 +9,17 @@ interface Props {
   onResult: (text: string) => void
   disabled?: boolean
   label?: string
+  modelId?: string
 }
 
-export function AISuggestButton({ projectId, context, type, onResult, disabled, label = 'AI 제안' }: Props) {
+export function AISuggestButton({ projectId, context, type, onResult, disabled, label = 'AI 제안', modelId }: Props) {
   const [loading, setLoading] = useState(false)
 
   const handleSuggest = async () => {
     if (!context.trim()) return
     setLoading(true)
     try {
-      const res = await apiClient.post(`/projects/${projectId}/ai/suggest`, { context, type })
+      const res = await apiClient.post(`/projects/${projectId}/ai/suggest`, { context, type, modelId })
       if (res.data) onResult(res.data)
     } catch {
     } finally {

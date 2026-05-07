@@ -1,14 +1,16 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Pencil, Save, X, ChevronRight, Sparkles } from 'lucide-react'
+import { ArrowLeft, Pencil, Save, X, ChevronRight, Sparkles, Users, BookOpen, Database, Code2 } from 'lucide-react'
 import { useState } from 'react'
 import { VersionSection } from '@/components/shared/VersionSection'
 import { AIGenerateModal } from '@/components/shared/AIGenerateModal'
 import { useForm } from 'react-hook-form'
 import { requirementApi, type RequirementPayload } from '@/api/requirement.api'
 import { featureApi } from '@/api/feature.api'
+import { useCaseApi, userStoryApi } from '@/api/usecase.api'
 import { aiStatusApi } from '@/api/admin.api'
+import { designApi } from '@/api/design.api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -53,6 +55,32 @@ export default function RequirementDetailPage() {
   const updateMutation = useMutation({
     mutationFn: (data: Partial<RequirementPayload>) => requirementApi.update(projectId!, reqId!, data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['requirement', projectId, reqId] }); setEditing(false) },
+  })
+
+  const { data: linkedUCs = [] } = useQuery({
+    queryKey: ['use-cases', projectId, req?.id],
+    queryFn: () => useCaseApi.list(projectId!),
+    enabled: !!projectId && !!req,
+    select: (data) => data.filter((uc: any) => uc.requirementId === req?.id),
+  })
+
+  const { data: linkedUSs = [] } = useQuery({
+    queryKey: ['user-stories', projectId, req?.id],
+    queryFn: () => userStoryApi.list(projectId!),
+    enabled: !!projectId && !!req,
+    select: (data) => data.filter((us: any) => us.requirementId === req?.id),
+  })
+
+  const { data: allDbTables = [] } = useQuery({
+    queryKey: ['design-db', projectId],
+    queryFn: () => designApi.listDbTables(projectId!),
+    enabled: !!projectId && !!req,
+  })
+
+  const { data: allApiSpecs = [] } = useQuery({
+    queryKey: ['design-api', projectId],
+    queryFn: () => designApi.listApiSpecs(projectId!),
+    enabled: !!projectId && !!req,
   })
 
   const { register, handleSubmit, reset } = useForm<RequirementPayload>()
@@ -100,7 +128,7 @@ export default function RequirementDetailPage() {
                 <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
                   <X size={14} /> {t('common.cancel')}
                 </Button>
-                <Button type="submit" size="sm" disabled={updateMutation.isPending}>
+                <Button type="submit" size="sm" disabled={updateMutation.isPending} disabledReason="처리 중입니다...">
                   <Save size={14} /> {t('common.save')}
                 </Button>
               </div>
@@ -170,26 +198,91 @@ export default function RequirementDetailPage() {
             variant="outline" size="sm"
             onClick={() => setShowAIFeature(true)}
             disabled={!aiStatus?.configured}
+            disabledReason="관리자 페이지에서 LLM을 설정하세요"
             title={!aiStatus?.configured ? 'LLM 설정이 필요합니다. 관리자 페이지에서 LLM을 활성화하세요.' : undefined}
           >
             <Sparkles size={14} />AI 기능생성
           </Button>
         }>
           <div className="space-y-4">
+            {linkedUCs.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
+                  <Users size={12} className="text-indigo-500" /> Use Case ({linkedUCs.length})
+                </p>
+                <div className="space-y-1">
+                  {linkedUCs.map((uc: any) => (
+                    <div key={uc.id} className="flex items-center gap-2 p-2 rounded border bg-indigo-50/50 text-xs">
+                      <span className="font-mono text-gray-400">{uc.code}</span>
+                      <span className="text-gray-700">{uc.title}</span>
+                      {uc.actor && <span className="text-gray-400">· {uc.actor}</span>}
+                      <Badge value={uc.status} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {linkedUSs.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
+                  <BookOpen size={12} className="text-pink-500" /> User Story ({linkedUSs.length})
+                </p>
+                <div className="space-y-1">
+                  {linkedUSs.map((us: any) => (
+                    <div key={us.id} className="flex items-center gap-2 p-2 rounded border bg-pink-50/50 text-xs">
+                      <span className="font-mono text-gray-400">{us.code}</span>
+                      <span className="text-gray-700">{us.title}</span>
+                      {us.asA && <span className="text-gray-400">· As a {us.asA}</span>}
+                      <Badge value={us.status} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <p className="text-xs font-medium text-gray-500 mb-2">🔧 기능 리스트 ({req.features?.length ?? 0})</p>
               {req.features && req.features.length > 0 ? (
                 <div className="space-y-1">
-                  {req.features.map((f: any) => (
-                    <div key={f.id} className="flex items-center justify-between p-2 rounded border hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/projects/${projectId}/features/${f.id}`)}>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-gray-400">{f.code}</span>
-                        <span className="text-sm">{f.title}</span>
-                        <Badge value={f.status} />
+                  {req.features.map((f: any) => {
+                    const fDbTables = (allDbTables as any[]).filter(d => d.featureId === f.id)
+                    const fApiSpecs = (allApiSpecs as any[]).filter(a => a.featureId === f.id)
+                    return (
+                    <div key={f.id} className="rounded border hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/projects/${projectId}/features/${f.id}`)}>
+                      <div className="flex items-center justify-between p-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs text-gray-400">{f.code}</span>
+                          <span className="text-sm">{f.title}</span>
+                          <Badge value={f.status} />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {fDbTables.length > 0 && (
+                            <span className="flex items-center gap-0.5 text-[10px] px-1 bg-green-100 text-green-700 rounded">
+                              <Database size={10} />{fDbTables.length}DB
+                            </span>
+                          )}
+                          {fApiSpecs.length > 0 && (
+                            <span className="flex items-center gap-0.5 text-[10px] px-1 bg-cyan-100 text-cyan-700 rounded">
+                              <Code2 size={10} />{fApiSpecs.length}API
+                            </span>
+                          )}
+                          <ChevronRight size={14} className="text-gray-300" />
+                        </div>
                       </div>
-                      <ChevronRight size={14} className="text-gray-300" />
+                      {(fDbTables.length > 0 || fApiSpecs.length > 0) && (
+                        <div className="px-3 pb-2 flex flex-wrap gap-1">
+                          {fDbTables.map((d: any) => (
+                            <span key={d.id} className="text-[10px] bg-green-50 border border-green-200 text-green-700 px-1.5 py-0.5 rounded font-mono">{d.name}</span>
+                          ))}
+                          {fApiSpecs.map((a: any) => (
+                            <span key={a.id} className="text-[10px] bg-cyan-50 border border-cyan-200 text-cyan-700 px-1.5 py-0.5 rounded font-mono">{a.method} {a.path}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               ) : (
                 <p className="text-sm text-gray-400 cursor-pointer hover:text-blue-500" onClick={() => navigate(`/projects/${projectId}/features`)}>+ 기능 추가 (기능 목록에서 요구사항 연결)</p>

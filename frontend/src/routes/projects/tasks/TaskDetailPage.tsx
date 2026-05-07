@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/shared/Modal'
 import { VersionSection } from '@/components/shared/VersionSection'
+import { AncestorTags } from '@/components/shared/AncestorTags'
 import AppLayout from '@/components/layout/AppLayout'
 
 const STATUSES = ['pending', 'in_progress', 'completed', 'on_hold']
@@ -103,6 +104,12 @@ export default function TaskDetailPage() {
           <div className="flex-1">
             <p className="text-xs text-gray-400 font-mono">{t2.code}</p>
             <h2 className="text-xl font-bold">{t2.title}</h2>
+            <div className="mt-1">
+              <AncestorTags tags={[
+                (task as any).feature?.requirement ? { code: (task as any).feature.requirement.code, title: (task as any).feature.requirement.title, type: 'requirement' as const, id: (task as any).feature.requirement.id } : null,
+                (task as any).feature ? { code: (task as any).feature.code, title: (task as any).feature.title, type: 'feature' as const, id: (task as any).feature.id } : null,
+              ]} />
+            </div>
           </div>
           {!editing && <Button variant="outline" size="sm" onClick={startEdit}><Pencil size={14} />{t('common.edit')}</Button>}
         </div>
@@ -111,7 +118,7 @@ export default function TaskDetailPage() {
           <Section title="기본 정보" action={editing && (
             <div className="flex gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}><X size={14} />{t('common.cancel')}</Button>
-              <Button type="submit" size="sm" disabled={updateMutation.isPending}><Save size={14} />{t('common.save')}</Button>
+              <Button type="submit" size="sm" disabled={updateMutation.isPending} disabledReason="처리 중입니다..."><Save size={14} />{t('common.save')}</Button>
             </div>
           )}>
             <div className="grid grid-cols-2 gap-4">
@@ -266,7 +273,7 @@ export default function TaskDetailPage() {
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => { setShowIssue(false); resetIssue() }}>{t('common.cancel')}</Button>
-            <Button type="submit" disabled={addIssueMutation.isPending}>{t('common.save')}</Button>
+            <Button type="submit" disabled={addIssueMutation.isPending} disabledReason="처리 중입니다...">{t('common.save')}</Button>
           </div>
         </form>
       </Modal>

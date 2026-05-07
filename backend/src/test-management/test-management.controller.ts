@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { TestManagementService } from './test-management.service';
 import { CreateScenarioDto } from './dto/create-scenario.dto';
@@ -10,6 +10,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 @ApiTags('Tests')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
+@UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: false }))
 @Controller('projects/:projectId')
 export class TestManagementController {
   constructor(private svc: TestManagementService) {}

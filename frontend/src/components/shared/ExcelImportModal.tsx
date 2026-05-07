@@ -33,8 +33,18 @@ export function ExcelImportModal({ open, onClose, projectId, queryKey }: Props) 
     },
   })
 
-  const downloadTemplate = () => {
-    window.open(`/api/v1/projects/${projectId}/requirements/template/excel`, '_blank')
+  const downloadTemplate = async () => {
+    const store = JSON.parse(localStorage.getItem('pms-auth') || '{}')
+    const token = store?.state?.accessToken ?? ''
+    const res = await fetch(`/api/v1/projects/${projectId}/requirements/template/excel`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) return
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'requirements-template.xlsx'; a.click()
+    URL.revokeObjectURL(url)
   }
 
   const handleClose = () => {
@@ -73,6 +83,7 @@ export function ExcelImportModal({ open, onClose, projectId, queryKey }: Props) 
               <Button variant="outline" onClick={handleClose}>취소</Button>
               <Button
                 disabled={!file || importMutation.isPending}
+                disabledReason={!file ? "파일을 선택하세요" : "처리 중입니다..."}
                 onClick={() => file && importMutation.mutate(file)}
               >
                 {importMutation.isPending ? '처리중...' : 'Import'}

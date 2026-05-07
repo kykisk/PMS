@@ -20,7 +20,7 @@ type FormData = z.infer<typeof schema>
 export default function RegisterPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { setTokens } = useAuthStore()
+  const { setTokens, setUser } = useAuthStore()
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -28,8 +28,10 @@ export default function RegisterPage() {
 
   const mutation = useMutation({
     mutationFn: authApi.register,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setTokens(data)
+      const me = await authApi.me()
+      setUser(me)
       navigate('/projects')
     },
   })

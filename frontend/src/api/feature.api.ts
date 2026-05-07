@@ -43,6 +43,17 @@ export const featureApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data)
   },
+  listScreenImages: (projectId: string, featureId: string) =>
+    apiClient.get(`/projects/${projectId}/features/${featureId}/screen`).then(r => r.data),
+  uploadScreenImages: (projectId: string, featureId: string, files: File[]) => {
+    const form = new FormData()
+    files.forEach(f => form.append('files', f))
+    return apiClient.post(`/projects/${projectId}/features/${featureId}/screen`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data)
+  },
+  deleteScreenImage: (projectId: string, featureId: string, imageId: string) =>
+    apiClient.delete(`/projects/${projectId}/features/${featureId}/screen/${imageId}`).then(r => r.data),
   link: (projectId: string, featureId: string, reqId: string) =>
     apiClient.post(`/projects/${projectId}/features/${featureId}/link`, { reqId }).then(r => r.data),
   unlink: (projectId: string, featureId: string) =>

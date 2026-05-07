@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { Sparkles, CheckSquare, Square, AlertCircle, Loader2 } from 'lucide-react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { Sparkles, CheckSquare, Square, AlertCircle } from 'lucide-react'
 import { Modal } from './Modal'
 import { Button } from '@/components/ui/button'
+import { AIProgressBar } from './AIProgressBar'
 import apiClient from '@/api/client'
+import { aiStatusApi } from '@/api/admin.api'
 
 interface GeneratedItem {
   title: string
@@ -29,9 +31,12 @@ export function AIGenerateModal({ open, onClose, title, projectId, endpoint, pay
   const [items, setItems] = useState<GeneratedItem[]>([])
   const [generated, setGenerated] = useState(false)
   const [rawText, setRawText] = useState('')
+  const [selectedModel, setSelectedModel] = useState('')
+
+  const { data: aiStatus } = useQuery({ queryKey: ['ai-status', projectId], queryFn: () => aiStatusApi.check(projectId), enabled: !!projectId })
 
   const generateMutation = useMutation({
-    mutationFn: () => apiClient.post(`/projects/${projectId}/${endpoint}`, payload).then(r => r.data),
+    mutationFn: () => apiClient.post(`/projects/${projectId}/${endpoint}`, { ...payload, modelId: selectedModel || undefined }).then(r => r.data),
     onSuccess: (data: any) => {
       if (Array.isArray(data)) {
         if (data[0]?._parseError) {
@@ -72,13 +77,21 @@ export function AIGenerateModal({ open, onClose, title, projectId, endpoint, pay
           <div className="text-center py-8">
             <Sparkles size={32} className="mx-auto mb-3 text-blue-400" />
             <p className="text-gray-600 mb-4">AI가 자동으로 초안을 생성합니다.<br />생성된 결과를 검토하고 선택 후 확정하세요.</p>
+            {aiStatus?.models && aiStatus.models.length > 0 && (
+              <select className="border rounded px-2 h-7 text-xs w-full mb-3" value={selectedModel} onChange={e => setSelectedModel(e.target.value)}>
+                <option value="">자동 선택 (기본)</option>
+                {aiStatus.models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+            )}
+            <AIProgressBar isActive={generateMutation.isPending} type="generate" />
+            {!generateMutation.isPending && (
             <Button
-              disabled={generateMutation.isPending}
               onClick={() => generateMutation.mutate()}
               className="gap-2"
             >
-              {generateMutation.isPending ? <><Loader2 size={16} className="animate-spin" />생성 중...</> : <><Sparkles size={16} />AI 생성 시작</>}
+              <Sparkles size={16} />AI 생성 시작
             </Button>
+            )}
           </div>
         ) : rawText ? (
           <div className="space-y-3">
@@ -130,7 +143,7 @@ export function AIGenerateModal({ open, onClose, title, projectId, endpoint, pay
               <Button variant="outline" size="sm" onClick={() => { setGenerated(false); setItems([]) }}>다시 생성</Button>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={handleClose}>취소</Button>
-                <Button disabled={items.filter(i => i._selected).length === 0} onClick={handleConfirm}>
+                <Button disabled={items.filter(i => i._selected).length === 0} disabledReason="항목을 선택하세요" onClick={handleConfirm}>
                   ✅ {items.filter(i => i._selected).length}개 확정 저장
                 </Button>
               </div>

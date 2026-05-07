@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, UseInterceptors, UploadedFile, Res } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, UseInterceptors, UploadedFile, Res, Req, UsePipes, ValidationPipe } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -10,61 +10,64 @@ import { PrismaService } from '../prisma/prisma.service';
 @ApiTags('AI')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
+@UsePipes(new ValidationPipe({ whitelist: false }))
 @Controller('projects/:projectId/ai')
 export class AIController {
   constructor(private aiService: AIService, private prisma: PrismaService) {}
 
   @Get('status')
-  @ApiOperation({ summary: 'LLM 설정 여부 확인' })
-  async status() {
-    return { configured: await this.aiService.isConfigured() };
+  @ApiOperation({ summary: 'LLM 설정 여부 + 사용 가능 모델 목록' })
+  async status(@Req() req: any) {
+    const userId = req.user?.id;
+    const models = await this.aiService.getAvailableModels(userId);
+    return { configured: models.length > 0, models };
   }
 
   @Post('parse-spec')
   @ApiOperation({ summary: '요구사항 기술서 AI 정제 (최초 Import)' })
-  async parseSpec(@Body() body: { rows: any[] }) {
-    return this.aiService.parseSpec(body.rows);
+  async parseSpec(@Body() body: { rows: any[]; modelId?: string }, @Req() req: any) {
+    return this.aiService.parseSpec(body.rows, req.user?.id, body.modelId);
   }
 
   @Post('parse-markdown')
   @ApiOperation({ summary: '마크다운 → 요구사항 AI 추출' })
-  async parseMarkdown(@Body() body: { content: string }) {
-    return this.aiService.parseMarkdown(body.content);
+  async parseMarkdown(@Body() body: { content: string; modelId?: string }, @Req() req: any) {
+    return this.aiService.parseMarkdown(body.content, req.user?.id, body.modelId);
   }
 
   @Post('generate-features')
   @ApiOperation({ summary: '요구사항 → 기능 리스트 AI 자동생성' })
-  async generateFeatures(@Body() body: { requirementId: string }, @Param('projectId') pid: string) {
-    const req = await this.prisma.requirement.findFirst({ where: { id: body.requirementId, projectId: pid } });
-    if (!req) return { error: '요구사항을 찾을 수 없습니다.' };
-    return this.aiService.generateFeatures({ title: req.title, description: req.description ?? undefined, category: req.category ?? undefined });
+  async generateFeatures(@Body() body: { requirementId: string; modelId?: string }, @Param('projectId') pid: string, @Req() req: any) {
+    const requirement = await this.prisma.requirement.findFirst({ where: { id: body.requirementId, projectId: pid } });
+    if (!requirement) return { error: '요구사항을 찾을 수 없습니다.' };
+    return this.aiService.generateFeatures({ title: requirement.title, description: requirement.description ?? undefined, category: requirement.category ?? undefined }, req.user?.id, body.modelId);
   }
 
   @Post('generate-tasks')
   @ApiOperation({ summary: '기능 → Task AI 자동분해' })
-  async generateTasks(@Body() body: { featureId: string }, @Param('projectId') pid: string) {
+  async generateTasks(@Body() body: { featureId: string; modelId?: string }, @Param('projectId') pid: string, @Req() req: any) {
     const feat = await this.prisma.feature.findFirst({ where: { id: body.featureId, projectId: pid } });
     if (!feat) return { error: '기능을 찾을 수 없습니다.' };
-    return this.aiService.generateTasks({ title: feat.title, description: feat.description ?? undefined });
+    return this.aiService.generateTasks({ title: feat.title, description: feat.description ?? undefined }, req.user?.id, body.modelId);
   }
 
   @Post('generate-test-scenarios')
   @ApiOperation({ summary: '요구사항+기능 → 테스트 시나리오 AI 자동생성' })
-  async generateTestScenarios(@Body() body: { requirementId?: string; featureId?: string }, @Param('projectId') pid: string) {
-    const [req, feat] = await Promise.all([
+  async generateTestScenarios(@Body() body: { requirementId?: string; featureId?: string; modelId?: string }, @Param('projectId') pid: string, @Req() req: any) {
+    const [requirement, feat] = await Promise.all([
       body.requirementId ? this.prisma.requirement.findFirst({ where: { id: body.requirementId, projectId: pid } }) : null,
       body.featureId ? this.prisma.feature.findFirst({ where: { id: body.featureId, projectId: pid } }) : null,
     ]);
     return this.aiService.generateTestScenarios({
-      requirement: req ? { title: req.title, description: req.description ?? undefined } : undefined,
+      requirement: requirement ? { title: requirement.title, description: requirement.description ?? undefined } : undefined,
       feature: feat ? { title: feat.title, description: feat.description ?? undefined } : undefined,
-    });
+    }, req.user?.id, body.modelId);
   }
 
   @Post('suggest')
   @ApiOperation({ summary: '수동 작성 시 AI 보조 제안' })
-  suggest(@Body() body: { context: string; type: string }) {
-    return this.aiService.suggest(body.context, body.type);
+  suggest(@Body() body: { context: string; type: string; modelId?: string }, @Req() req: any) {
+    return this.aiService.suggest(body.context, body.type, req.user?.id, body.modelId);
   }
 
   @Get('spec-template')

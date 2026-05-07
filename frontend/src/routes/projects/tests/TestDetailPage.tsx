@@ -175,7 +175,7 @@ export default function TestDetailPage() {
           <div className="space-y-1"><Label>예상 결과</Label><Input value={caseForm.expected} onChange={e => setCaseForm(f => ({ ...f, expected: e.target.value }))} placeholder="로그인 성공 후 대시보드 이동" /></div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowAddCase(false)}>{t('common.cancel')}</Button>
-            <Button disabled={!caseForm.title || addCaseMutation.isPending} onClick={() => addCaseMutation.mutate()}>{t('common.save')}</Button>
+            <Button disabled={!caseForm.title || addCaseMutation.isPending} disabledReason={!caseForm.title ? "필수 항목을 입력하세요" : "처리 중입니다..."} onClick={() => addCaseMutation.mutate()}>{t('common.save')}</Button>
           </div>
         </div>
       </Modal>
@@ -192,7 +192,7 @@ export default function TestDetailPage() {
           <div className="space-y-1"><Label>실제 결과</Label><textarea className="w-full border rounded-md px-3 py-2 text-sm resize-none" rows={3} value={execForm.actual} onChange={e => setExecForm(f => ({ ...f, actual: e.target.value }))} placeholder="실제 수행 결과 입력" /></div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowExecute(null)}>{t('common.cancel')}</Button>
-            <Button disabled={executeMutation.isPending} onClick={() => showExecute && executeMutation.mutate(showExecute)}>기록</Button>
+            <Button disabled={executeMutation.isPending} disabledReason="처리 중입니다..." onClick={() => showExecute && executeMutation.mutate(showExecute)}>기록</Button>
           </div>
         </div>
       </Modal>

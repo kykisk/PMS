@@ -1,10 +1,12 @@
 import { useState, useRef } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Upload, Download, Sparkles, Loader2, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Upload, Download, Sparkles, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react'
+import { AIProgressBar } from './AIProgressBar'
 import { Modal } from './Modal'
 import { Button } from '@/components/ui/button'
 import apiClient from '@/api/client'
 import { requirementApi } from '@/api/requirement.api'
+import { aiStatusApi } from '@/api/admin.api'
 
 type DiffItem = {
   type: 'new' | 'changed' | 'unchanged'
@@ -28,14 +30,18 @@ export function SpecImportModal({ open, onClose, projectId, queryKey, mode = 'in
   const [stage, setStage] = useState<'upload' | 'preview' | 'done'>('upload')
   const [items, setItems] = useState<DiffItem[]>([])
   const [rawText, setRawText] = useState('')
+  const [selectedModel, setSelectedModel] = useState('')
+
+  const { data: aiStatus } = useQuery({ queryKey: ['ai-status', projectId], queryFn: () => aiStatusApi.check(projectId), enabled: !!projectId })
 
   const parseMutation = useMutation({
     mutationFn: async (f: File) => {
       const form = new FormData()
       form.append('file', f)
-      const endpoint = mode === 'update'
+      const base = mode === 'update'
         ? `/projects/${projectId}/ai/diff-spec-upload`
         : `/projects/${projectId}/ai/parse-spec-upload`
+      const endpoint = selectedModel ? `${base}?modelId=${selectedModel}` : base
       const res = await apiClient.post(endpoint, form, { headers: { 'Content-Type': 'multipart/form-data' } })
       return res.data
     },
@@ -102,7 +108,19 @@ export function SpecImportModal({ open, onClose, projectId, queryKey, mode = 'in
         {stage === 'upload' && (
           <>
             <Button variant="outline" size="sm" className="w-full"
-              onClick={() => window.open(`/api/v1/projects/${projectId}/ai/spec-template`, '_blank')}>
+              onClick={async () => {
+                const store = JSON.parse(localStorage.getItem('pms-auth') || '{}')
+                const token = store?.state?.accessToken ?? ''
+                const res = await fetch(`/api/v1/projects/${projectId}/ai/spec-template`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                })
+                if (!res.ok) return
+                const blob = await res.blob()
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url; a.download = 'spec-template.xlsx'; a.click()
+                URL.revokeObjectURL(url)
+              }}>
               <Download size={14} />기술서 템플릿 다운로드 (요구사항구분/요청사항/상세내용)
             </Button>
             <div
@@ -116,12 +134,21 @@ export function SpecImportModal({ open, onClose, projectId, queryKey, mode = 'in
             </div>
             <input ref={fileRef} type="file" accept=".xlsx" className="hidden"
               onChange={e => setFile(e.target.files?.[0] ?? null)} />
+            {aiStatus?.models && aiStatus.models.length > 0 && (
+              <select className="border rounded px-2 h-7 text-xs w-full" value={selectedModel} onChange={e => setSelectedModel(e.target.value)}>
+                <option value="">자동 선택 (기본)</option>
+                {aiStatus.models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+            )}
+            <AIProgressBar isActive={parseMutation.isPending} type="parse" />
+            {!parseMutation.isPending && (
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={handleClose}>취소</Button>
-              <Button disabled={!file || parseMutation.isPending} onClick={() => file && parseMutation.mutate(file)}>
-                {parseMutation.isPending ? <><Loader2 size={14} className="animate-spin mr-1" />AI 분석중...</> : <><Sparkles size={14} />AI 분석</>}
+              <Button disabled={!file} disabledReason="파일을 선택하세요" onClick={() => file && parseMutation.mutate(file)}>
+                <Sparkles size={14} />AI 분석
               </Button>
             </div>
+            )}
           </>
         )}
 
@@ -174,6 +201,7 @@ export function SpecImportModal({ open, onClose, projectId, queryKey, mode = 'in
               <div className="flex gap-2">
                 <Button variant="outline" onClick={handleClose}>취소</Button>
                 <Button disabled={items.filter(i => i._selected).length === 0 || confirmMutation.isPending}
+                  disabledReason={items.filter(i => i._selected).length === 0 ? "항목을 선택하세요" : "처리 중입니다..."}
                   onClick={() => confirmMutation.mutate()}>
                   {confirmMutation.isPending ? '저장중...' : `✅ ${items.filter(i => i._selected && i.type !== 'unchanged').length}개 반영`}
                 </Button>

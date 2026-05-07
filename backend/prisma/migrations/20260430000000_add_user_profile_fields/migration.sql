@@ -1,0 +1,5 @@
+ALTER TABLE "User" ADD COLUMN "nameEn" TEXT;
+ALTER TABLE "User" ADD COLUMN "phone" TEXT;
+ALTER TABLE "User" ADD COLUMN "department" TEXT;
+ALTER TABLE "User" ADD COLUMN "position" TEXT;
+ALTER TABLE "User" ADD COLUMN "avatarUrl" TEXT;

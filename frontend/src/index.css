@@ -1,5 +1,6 @@
 :root {
-  font-family: 'Pretendard Variable', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: 'Inter', 'Pretendard Variable', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  letter-spacing: -0.011em;
 }
 
 @import "tailwindcss";
@@ -10,19 +11,22 @@
   --bg: #fff;
   --border: #e5e4e7;
   --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
+  --accent: 94 106 210;
+  --accent-hex: #5E6AD2;
+  --accent-bright: #6872D9;
+  --accent-glow: rgba(94, 106, 210, 0.3);
+  --accent-bg: rgba(94, 106, 210, 0.1);
+  --accent-border: rgba(94, 106, 210, 0.5);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --sans: 'Inter', 'Pretendard Variable', system-ui, sans-serif;
+  --heading: 'Inter', 'Pretendard Variable', system-ui, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
 
   font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
+  letter-spacing: -0.011em;
   color-scheme: light dark;
   color: var(--text);
   background: var(--bg);
@@ -43,9 +47,12 @@
     --bg: #16171d;
     --border: #2e303a;
     --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
+    --accent: 110 122 230;
+    --accent-hex: #6E7AE6;
+    --accent-bright: #7B86EB;
+    --accent-glow: rgba(110, 122, 230, 0.3);
+    --accent-bg: rgba(110, 122, 230, 0.15);
+    --accent-border: rgba(110, 122, 230, 0.5);
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
@@ -73,10 +80,12 @@ body {
 }
 
 h1,
-h2 {
+h2,
+h3 {
   font-family: var(--heading);
   font-weight: 500;
   color: var(--text-h);
+  letter-spacing: -0.02em;
 }
 
 h1 {
@@ -114,4 +123,42 @@ code {
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg);
+}
+
+button, a, input, select, textarea {
+  transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+select:focus, textarea:focus {
+  outline: none;
+  border-color: #5E6AD2;
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.15);
+}
+
+.border {
+  border-color: rgba(0, 0, 0, 0.08);
+}
+table th { border-bottom: 1px solid rgba(0, 0, 0, 0.08); }
+table td { border-bottom: 1px solid rgba(0, 0, 0, 0.04); }
+table th { padding: 6px 12px; font-size: 11px; }
+table td { padding: 5px 12px; font-size: 12px; }
+table tbody tr { height: 32px; }
+
+.card-elevated {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    0 4px 16px rgba(0, 0, 0, 0.06);
+  transition: box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card-elevated:hover {
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.1),
+    0 8px 32px rgba(94, 106, 210, 0.08);
+}
+
+.card-accent-top {
+  border-top: 3px solid #5E6AD2 !important;
 }

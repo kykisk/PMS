@@ -1,8 +1,8 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param, Query,
-  UseGuards, UseInterceptors, UploadedFile,
+  UseGuards, UseInterceptors, UploadedFile, UploadedFiles,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { FeatureService } from './feature.service';
 import { CreateFeatureDto } from './dto/create-feature.dto';
@@ -55,16 +55,27 @@ export class FeatureController {
   }
 
   @Post(':featureId/screen')
-  @ApiOperation({ summary: '화면설계서 업로드' })
+  @ApiOperation({ summary: '화면설계서 이미지 업로드 (다중)' })
   @ApiConsumes('multipart/form-data')
-  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
-  @UseInterceptors(FileInterceptor('file'))
-  uploadScreen(
+  @UseInterceptors(FilesInterceptor('files', 20))
+  uploadScreens(
     @Param('projectId') pid: string,
     @Param('featureId') fid: string,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFiles() files: Express.Multer.File[],
   ) {
-    return this.svc.uploadScreenDesign(pid, fid, file);
+    return this.svc.uploadScreenImages(pid, fid, files);
+  }
+
+  @Get(':featureId/screen')
+  @ApiOperation({ summary: '화면설계서 이미지 목록' })
+  listScreens(@Param('featureId') fid: string) {
+    return this.svc.listScreenImages(fid);
+  }
+
+  @Delete(':featureId/screen/:imageId')
+  @ApiOperation({ summary: '화면설계서 이미지 삭제' })
+  deleteScreen(@Param('featureId') fid: string, @Param('imageId') imageId: string) {
+    return this.svc.deleteScreenImage(fid, imageId);
   }
 
   @Post(':featureId/link')

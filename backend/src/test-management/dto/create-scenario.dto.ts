@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsIn } from 'class-validator';
+import { IsString, IsOptional } from 'class-validator';
 
 export class CreateScenarioDto {
   @ApiProperty({ example: '정상 로그인 시나리오' })
@@ -11,9 +11,9 @@ export class CreateScenarioDto {
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({ enum: ['unit', 'integration'], default: 'integration' })
+  @ApiPropertyOptional({ default: 'integration' })
   @IsOptional()
-  @IsIn(['unit', 'integration'])
+  @IsString()
   type?: string;
 
   @ApiPropertyOptional()

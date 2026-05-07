@@ -22,9 +22,21 @@ export class ProjectService {
     return project;
   }
 
-  async findAll(userId: string) {
+  async findAll(userId: string, query?: { search?: string; status?: string; from?: string; to?: string }) {
+    const where: any = { members: { some: { userId } } };
+    if (query?.search) {
+      where.name = { contains: query.search, mode: 'insensitive' };
+    }
+    if (query?.status) {
+      where.status = query.status;
+    }
+    if (query?.from || query?.to) {
+      where.createdAt = {};
+      if (query.from) where.createdAt.gte = new Date(query.from);
+      if (query.to) where.createdAt.lte = new Date(query.to);
+    }
     return this.prisma.project.findMany({
-      where: { members: { some: { userId } } },
+      where,
       include: {
         members: { include: { user: { select: { id: true, name: true, email: true } } } },
         _count: { select: { requirements: true, tasks: true } },
@@ -89,6 +101,42 @@ export class ProjectService {
       where: { projectId },
       include: { user: { select: { id: true, name: true, email: true, role: true } } },
     });
+  }
+
+  async getSettings(projectId: string, userId: string) {
+    const project = await this.findOne(projectId, userId);
+    const [members, externalMembers] = await Promise.all([
+      this.prisma.projectMember.findMany({
+        where: { projectId },
+        include: { user: { select: { id: true, name: true, nameEn: true, email: true, phone: true, department: true, position: true, role: true } } },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.externalProjectMember.findMany({
+        where: { projectId },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
+    return { project, members, externalMembers };
+  }
+
+  async updateMemberRole(projectId: string, userId: string, role: string, note?: string) {
+    return this.prisma.projectMember.update({
+      where: { projectId_userId: { projectId, userId } },
+      data: { role, note },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+  }
+
+  async createExternalMember(projectId: string, data: { name: string; nameEn?: string; email?: string; phone?: string; role?: string; note?: string }) {
+    return this.prisma.externalProjectMember.create({ data: { projectId, ...data } });
+  }
+
+  async updateExternalMember(id: string, data: Partial<{ name: string; nameEn: string; email: string; phone: string; role: string; note: string }>) {
+    return this.prisma.externalProjectMember.update({ where: { id }, data });
+  }
+
+  async deleteExternalMember(id: string) {
+    return this.prisma.externalProjectMember.delete({ where: { id } });
   }
 
   async getDashboard(projectId: string, userId: string) {

@@ -1,19 +1,22 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Pencil, Save, X, ChevronRight, Upload, Sparkles } from 'lucide-react'
-import { useState, useRef } from 'react'
+import { ArrowLeft, Pencil, Save, X, ChevronRight, Sparkles, Database, Code2, ExternalLink } from 'lucide-react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { featureApi, type FeaturePayload } from '@/api/feature.api'
 import { requirementApi } from '@/api/requirement.api'
 import { taskApi } from '@/api/task.api'
 import { aiStatusApi } from '@/api/admin.api'
+import { designApi } from '@/api/design.api'
 import { AIGenerateModal } from '@/components/shared/AIGenerateModal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/shared/Badge'
+import { AncestorTags } from '@/components/shared/AncestorTags'
 import { VersionSection } from '@/components/shared/VersionSection'
+import { ScreenDesignSection } from '@/components/shared/ScreenDesignSection'
 import AppLayout from '@/components/layout/AppLayout'
 
 const STATUSES = ['new', 'review', 'confirmed', 'changed']
@@ -38,7 +41,6 @@ export default function FeatureDetailPage() {
   const [editing, setEditing] = useState(false)
   const [showAITask, setShowAITask] = useState(false)
   const [showAITest, setShowAITest] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
 
   const { data: aiStatus } = useQuery({
     queryKey: ['ai-status', projectId],
@@ -59,14 +61,23 @@ export default function FeatureDetailPage() {
   })
   const requirements = requirementsResult?.data ?? []
 
+  const { data: dbTables = [] } = useQuery({
+    queryKey: ['design-db', projectId, featureId],
+    queryFn: () => designApi.listDbTables(projectId!),
+    enabled: !!projectId && !!featureId,
+    select: (data: any[]) => data.filter(d => d.featureId === featureId),
+  })
+
+  const { data: apiSpecs = [] } = useQuery({
+    queryKey: ['design-api', projectId, featureId],
+    queryFn: () => designApi.listApiSpecs(projectId!),
+    enabled: !!projectId && !!featureId,
+    select: (data: any[]) => data.filter(a => a.featureId === featureId),
+  })
+
   const updateMutation = useMutation({
     mutationFn: (data: Partial<FeaturePayload>) => featureApi.update(projectId!, featureId!, data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['feature', projectId, featureId] }); setEditing(false) },
-  })
-
-  const uploadMutation = useMutation({
-    mutationFn: (file: File) => featureApi.uploadScreen(projectId!, featureId!, file),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['feature', projectId, featureId] }),
   })
 
   const { register, handleSubmit, reset } = useForm<FeaturePayload>()
@@ -96,9 +107,16 @@ export default function FeatureDetailPage() {
           <Section title="기본 정보" action={editing && (
             <div className="flex gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}><X size={14} />{t('common.cancel')}</Button>
-              <Button type="submit" size="sm" disabled={updateMutation.isPending}><Save size={14} />{t('common.save')}</Button>
+              <Button type="submit" size="sm" disabled={updateMutation.isPending} disabledReason="처리 중입니다..."><Save size={14} />{t('common.save')}</Button>
             </div>
           )}>
+            {feature.requirement && (
+              <div className="mb-4">
+                <AncestorTags tags={[
+                  { code: feature.requirement.code, title: feature.requirement.title, type: 'requirement', id: feature.requirement.id }
+                ]} />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div><Label className="text-xs text-gray-500 mb-1 block">코드</Label><p className="font-mono text-sm">{feature.code}</p></div>
               <div>
@@ -135,25 +153,14 @@ export default function FeatureDetailPage() {
           </Section>
         </form>
 
-        <Section title="화면설계서" action={
-          <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
-            <Upload size={14} />업로드
-          </Button>
-        }>
-          <input ref={fileRef} type="file" className="hidden" accept=".png,.jpg,.jpeg,.pdf,.fig"
-            onChange={e => { const f = e.target.files?.[0]; if (f) uploadMutation.mutate(f) }} />
-          {feature.screenDesign
-            ? <div className="flex items-center gap-2">
-                <a href={feature.screenDesign} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">{feature.screenDesign.split('/').pop()}</a>
-              </div>
-            : <p className="text-sm text-gray-400">첨부된 화면설계서가 없습니다</p>}
-          {uploadMutation.isPending && <p className="text-sm text-gray-400 mt-2">업로드 중...</p>}
+        <Section title="화면설계서">
+          <ScreenDesignSection projectId={projectId!} featureId={featureId!} />
         </Section>
 
         <Section title="연결 항목" action={
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setShowAITask(true)} disabled={!aiStatus?.configured} title={!aiStatus?.configured ? 'LLM 설정이 필요합니다' : undefined}><Sparkles size={14} />AI Task생성</Button>
-            <Button variant="outline" size="sm" onClick={() => setShowAITest(true)} disabled={!aiStatus?.configured} title={!aiStatus?.configured ? 'LLM 설정이 필요합니다' : undefined}><Sparkles size={14} />AI 테스트생성</Button>
+            <Button variant="outline" size="sm" onClick={() => setShowAITask(true)} disabled={!aiStatus?.configured} disabledReason="관리자 페이지에서 LLM을 설정하세요" title={!aiStatus?.configured ? 'LLM 설정이 필요합니다' : undefined}><Sparkles size={14} />AI Task생성</Button>
+            <Button variant="outline" size="sm" onClick={() => setShowAITest(true)} disabled={!aiStatus?.configured} disabledReason="관리자 페이지에서 LLM을 설정하세요" title={!aiStatus?.configured ? 'LLM 설정이 필요합니다' : undefined}><Sparkles size={14} />AI 테스트생성</Button>
           </div>
         }>
           <div className="space-y-4">
@@ -201,6 +208,62 @@ export default function FeatureDetailPage() {
                   ))
                 : <p className="text-sm text-gray-400">연결된 테스트 시나리오가 없습니다</p>}
             </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                  <Database size={12} className="text-green-600" /> DB 설계 ({(dbTables as any[]).length})
+                </p>
+                <button onClick={() => navigate(`/projects/${projectId}/design`)} className="text-[10px] text-[#5E6AD2] hover:underline flex items-center gap-0.5">
+                  설계 페이지 <ExternalLink size={10} />
+                </button>
+              </div>
+              {(dbTables as any[]).length > 0 ? (
+                <div className="space-y-1">
+                  {(dbTables as any[]).map((d: any) => (
+                    <div key={d.id} className="p-2 rounded border bg-green-50/50 text-xs">
+                      <span className="font-mono font-medium text-green-800">{d.name}</span>
+                      {d.description && <span className="text-gray-500 ml-2">{d.description}</span>}
+                      {Array.isArray(d.columns) && d.columns.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {(d.columns as any[]).slice(0, 5).map((c: any, i: number) => (
+                            <span key={i} className="text-[10px] bg-white border border-green-200 text-green-700 px-1 rounded font-mono">
+                              {c.name}: {c.type}{c.primaryKey ? ' PK' : ''}
+                            </span>
+                          ))}
+                          {(d.columns as any[]).length > 5 && <span className="text-[10px] text-gray-400">+{(d.columns as any[]).length - 5}개</span>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">연결된 DB 테이블이 없습니다 <button onClick={() => navigate(`/projects/${projectId}/design`)} className="text-[#5E6AD2] hover:underline">설계 페이지에서 추가</button></p>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                  <Code2 size={12} className="text-cyan-600" /> API 명세 ({(apiSpecs as any[]).length})
+                </p>
+              </div>
+              {(apiSpecs as any[]).length > 0 ? (
+                <div className="space-y-1">
+                  {(apiSpecs as any[]).map((a: any) => (
+                    <div key={a.id} className="p-2 rounded border bg-cyan-50/50 text-xs">
+                      <div className="flex items-center gap-2">
+                        <Badge value={a.method} />
+                        <span className="font-mono text-cyan-800">{a.path}</span>
+                      </div>
+                      {a.summary && <p className="text-gray-500 mt-0.5">{a.summary}</p>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">연결된 API 명세가 없습니다</p>
+              )}
+            </div>
           </div>
         </Section>
 
@@ -232,10 +295,15 @@ export default function FeatureDetailPage() {
         projectId={projectId!}
         endpoint="ai/generate-test-scenarios"
         payload={{ featureId }}
-        onConfirm={async (items) => {
+         onConfirm={async (items) => {
           const { testApi } = await import('@/api/test.api')
           for (const item of items) {
-            await testApi.createScenario(projectId!, { title: item.title, description: item.description, type: item.type ?? 'integration', testData: item.testData, featureId: featureId! })
+            await testApi.createScenario(projectId!, {
+              title: String(item.title || ''),
+              description: item.description ? String(item.description) : undefined,
+              type: 'integration',
+              featureId: featureId!,
+            })
           }
           qc.invalidateQueries({ queryKey: ['feature', projectId, featureId] })
           qc.invalidateQueries({ queryKey: ['scenarios', projectId] })

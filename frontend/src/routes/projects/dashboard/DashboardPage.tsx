@@ -1,50 +1,58 @@
-import { type ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { projectApi } from '@/api/project.api'
 import AppLayout from '@/components/layout/AppLayout'
+import { MarkdownImportModal } from '@/components/shared/MarkdownImportModal'
 import {
   ClipboardList, Layers, CheckSquare, TestTube2,
-  AlertTriangle, ShieldAlert, Activity,
+  AlertTriangle, ShieldAlert, Activity, Sparkles, Users, BookOpen,
 } from 'lucide-react'
+import { useCaseApi, userStoryApi } from '@/api/usecase.api'
+
+const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  new: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  review: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+  confirmed: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+  changed: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
+  deleted: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+  pending: { bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200' },
+  in_progress: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  active: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  completed: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+  on_hold: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+  draft: { bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200' },
+  pass: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+  fail: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+}
 
 function StatCard({ title, items, accent, icon }: {
   title: string
-  items: { label: string; count: number; color: string }[]
+  items: { label: string; count: number; status: string }[]
   accent: 'blue' | 'purple' | 'amber' | 'green'
   icon: ReactNode
 }) {
   const total = items.reduce((s, i) => s + i.count, 0)
-  const border = {
-    blue: 'border-l-blue-500',
-    purple: 'border-l-purple-500',
-    amber: 'border-l-amber-500',
-    green: 'border-l-green-500',
-  }[accent]
-  const iconStyle = {
-    blue: 'bg-blue-50 text-blue-600',
-    purple: 'bg-purple-50 text-purple-600',
-    amber: 'bg-amber-50 text-amber-600',
-    green: 'bg-green-50 text-green-600',
-  }[accent]
+  const border = { blue: 'border-l-blue-500', purple: 'border-l-purple-500', amber: 'border-l-amber-500', green: 'border-l-green-500' }[accent]
+  const iconStyle = { blue: 'bg-blue-50 text-blue-600', purple: 'bg-purple-50 text-purple-600', amber: 'bg-amber-50 text-amber-600', green: 'bg-green-50 text-green-600' }[accent]
 
   return (
-    <div className={`bg-white rounded-lg border border-l-4 ${border} p-4`}>
-      <div className="flex items-center gap-2 mb-3">
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${iconStyle}`}>
-          {icon}
-        </div>
-        <h3 className="text-sm font-semibold text-gray-600">{title}</h3>
+    <div className={`bg-white rounded-lg border border-l-4 ${border} p-3 card-elevated`}>
+      <div className="flex items-center gap-2 mb-2">
+        <div className={`w-6 h-6 rounded flex items-center justify-center ${iconStyle}`}>{icon}</div>
+        <h3 className="text-xs font-semibold text-gray-500">{title}</h3>
+        <span className="ml-auto text-lg font-bold text-gray-800">{total}</span>
       </div>
-      <p className="text-2xl font-bold mb-3">총 {total}건</p>
-      <div className="space-y-2">
-        {items.map(item => (
-          <div key={item.label} className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-            <span className="text-xs text-gray-500 flex-1">{item.label}</span>
-            <span className="text-xs font-medium">{item.count}건</span>
-          </div>
-        ))}
+      <div className="flex flex-wrap gap-1">
+        {items.filter(i => i.count > 0).map(item => {
+          const c = STATUS_COLORS[item.status] || { bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200' }
+          return (
+            <div key={item.label} className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] ${c.bg} ${c.border}`}>
+              <span className={`font-bold ${c.text}`}>{item.label}</span>
+              <span className={`${c.text} opacity-60`}>{item.count}</span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -59,7 +67,7 @@ function ProgressCard({ avgProgress, total, completed, inProgress, onHold, issue
   const offset = circ - (avgProgress / 100) * circ
 
   return (
-    <div className="bg-white rounded-lg border p-6">
+    <div className="bg-white rounded-lg border p-6 card-elevated">
       <h3 className="text-sm font-semibold text-gray-600 mb-4">전체 진척율</h3>
       <div className="flex flex-col md:flex-row gap-6">
         <div className="flex items-center justify-center md:w-1/3">
@@ -67,7 +75,7 @@ function ProgressCard({ avgProgress, total, completed, inProgress, onHold, issue
             <svg className="w-32 h-32 -rotate-90" viewBox="0 0 120 120">
               <circle cx="60" cy="60" r={r} stroke="#e5e7eb" strokeWidth="8" fill="none" />
               <circle
-                cx="60" cy="60" r={r} stroke="#3b82f6" strokeWidth="8" fill="none"
+                cx="60" cy="60" r={r} stroke="#5E6AD2" strokeWidth="8" fill="none"
                 strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset}
                 className="transition-all duration-700"
               />
@@ -155,7 +163,7 @@ function RecentActivity({ dashboard }: { dashboard: Record<string, unknown> }) {
   }
 
   return (
-    <div className="bg-white rounded-lg border p-4">
+    <div className="bg-white rounded-lg border p-4 card-elevated">
       <div className="flex items-center gap-2 mb-3">
         <Activity size={16} className="text-gray-400" />
         <h3 className="text-sm font-semibold text-gray-600">최근 활동</h3>
@@ -177,13 +185,6 @@ function RecentActivity({ dashboard }: { dashboard: Record<string, unknown> }) {
       )}
     </div>
   )
-}
-
-const statusColors: Record<string, string> = {
-  new: '#9ca3af', review: '#f59e0b', confirmed: '#10b981',
-  changed: '#3b82f6', deleted: '#ef4444',
-  pending: '#9ca3af', in_progress: '#3b82f6', active: '#3b82f6', completed: '#10b981', on_hold: '#f59e0b',
-  draft: '#9ca3af', pass: '#10b981', fail: '#ef4444',
 }
 
 const statusLabels: Record<string, string> = {
@@ -208,54 +209,59 @@ export default function DashboardPage() {
     enabled: !!projectId,
   })
 
+  const { data: useCases = [] } = useQuery({
+    queryKey: ['use-cases-count', projectId],
+    queryFn: () => useCaseApi.list(projectId!),
+    enabled: !!projectId,
+  })
+
+  const { data: userStories = [] } = useQuery({
+    queryKey: ['user-stories-count', projectId],
+    queryFn: () => userStoryApi.list(projectId!),
+    enabled: !!projectId,
+  })
+
+  const [showAnalyze, setShowAnalyze] = useState(false)
+
   if (isLoading) return <AppLayout><div className="p-6 text-gray-400">로딩중...</div></AppLayout>
 
   const toItems = (arr: { status: string; _count: number }[]) =>
-    arr.map(r => ({ label: statusLabels[r.status] || r.status, count: r._count, color: statusColors[r.status] || '#9ca3af' }))
+    arr.map(r => ({ label: statusLabels[r.status] || r.status, count: r._count, status: r.status }))
 
   const openIssues = (dashboard?.issues ?? []).filter((i: any) => i.status === 'open')
   const issueCount = openIssues.filter((i: any) => i.type === 'issue').reduce((s: number, i: any) => s + i._count, 0)
   const riskCount = openIssues.filter((i: any) => i.type === 'risk').reduce((s: number, i: any) => s + i._count, 0)
 
   const taskStats = (dashboard?.tasks ?? []) as { status: string; _count: number }[]
-  const inProgress = taskStats
-    .filter(t => t.status === 'in_progress' || t.status === 'active')
-    .reduce((s, t) => s + t._count, 0)
-  const onHold = taskStats
-    .filter(t => t.status === 'on_hold')
-    .reduce((s, t) => s + t._count, 0)
+  const inProgress = taskStats.filter(t => t.status === 'in_progress' || t.status === 'active').reduce((s, t) => s + t._count, 0)
+  const onHold = taskStats.filter(t => t.status === 'on_hold').reduce((s, t) => s + t._count, 0)
 
   return (
     <AppLayout>
-      <div className="p-6">
-        <div className="mb-6 flex items-start justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">{project?.name}</h2>
-            {project?.description && <p className="text-gray-500 mt-1">{project.description}</p>}
-            {project?.startDate && (
-              <p className="text-sm text-gray-400 mt-1">
-                {new Date(project.startDate).toLocaleDateString('ko-KR')}
-                {project.endDate && ` ~ ${new Date(project.endDate).toLocaleDateString('ko-KR')}`}
-              </p>
-            )}
-          </div>
-          {(issueCount > 0 || riskCount > 0) && (
-            <div className="flex gap-3">
-              {issueCount > 0 && (
-                <button onClick={() => navigate(`/projects/${projectId}/tasks`)} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 rounded-md text-sm text-red-700 hover:bg-red-100">
-                  ⚠️ 미결 이슈 {issueCount}건
-                </button>
-              )}
-              {riskCount > 0 && (
-                <button onClick={() => navigate(`/projects/${projectId}/tasks`)} className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 border border-orange-200 rounded-md text-sm text-orange-700 hover:bg-orange-100">
-                  🔴 미결 리스크 {riskCount}건
-                </button>
-              )}
-            </div>
+      <div className="flex flex-col h-full">
+        <div className="bg-white border-b px-4 py-1.5 flex items-center gap-2">
+          <button
+            onClick={() => setShowAnalyze(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-[#5E6AD2] text-white text-xs rounded hover:bg-[#6872D9] transition-colors"
+          >
+            <Sparkles size={12} />
+            마크다운 AI 분석
+          </button>
+          {issueCount > 0 && (
+            <button onClick={() => navigate(`/projects/${projectId}/tasks`)} className="flex items-center gap-1 px-2 py-0.5 bg-red-50 border border-red-200 rounded text-[10px] text-red-600 hover:bg-red-100">
+              <AlertTriangle size={10} />미결 이슈 {issueCount}
+            </button>
+          )}
+          {riskCount > 0 && (
+            <button onClick={() => navigate(`/projects/${projectId}/tasks`)} className="flex items-center gap-1 px-2 py-0.5 bg-orange-50 border border-orange-200 rounded text-[10px] text-orange-600 hover:bg-orange-100">
+              <ShieldAlert size={10} />미결 리스크 {riskCount}
+            </button>
           )}
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
           {dashboard?.requirements && (
             <StatCard title="요구사항" items={toItems(dashboard.requirements)} accent="blue" icon={<ClipboardList size={16} />} />
           )}
@@ -268,39 +274,73 @@ export default function DashboardPage() {
           {dashboard?.tests && (
             <StatCard title="테스트" items={toItems(dashboard.tests)} accent="green" icon={<TestTube2 size={16} />} />
           )}
+          <div className="bg-white rounded-lg border border-l-4 border-l-indigo-400 p-3 card-elevated">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-6 h-6 rounded flex items-center justify-center bg-indigo-50 text-indigo-600"><Users size={14} /></div>
+              <h3 className="text-xs font-semibold text-gray-500">Use Case</h3>
+              <span className="ml-auto text-lg font-bold text-gray-800">{(useCases as any[]).length}</span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {(['draft','review','approved'] as const).map(s => {
+                const cnt = (useCases as any[]).filter(u => u.status === s).length
+                return cnt > 0 ? <div key={s} className="flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] bg-gray-50 border-gray-200"><span className="font-bold text-gray-600">{s === 'draft' ? '초안' : s === 'review' ? '검토' : '승인'}</span><span className="text-gray-400">{cnt}</span></div> : null
+              })}
+              {(useCases as any[]).length === 0 && <span className="text-[10px] text-gray-300">없음</span>}
+            </div>
+          </div>
+          <div className="bg-white rounded-lg border border-l-4 border-l-pink-400 p-3 card-elevated">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-6 h-6 rounded flex items-center justify-center bg-pink-50 text-pink-600"><BookOpen size={14} /></div>
+              <h3 className="text-xs font-semibold text-gray-500">User Story</h3>
+              <span className="ml-auto text-lg font-bold text-gray-800">{(userStories as any[]).length}</span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {(['draft','review','approved'] as const).map(s => {
+                const cnt = (userStories as any[]).filter(u => u.status === s).length
+                return cnt > 0 ? <div key={s} className="flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] bg-gray-50 border-gray-200"><span className="font-bold text-gray-600">{s === 'draft' ? '초안' : s === 'review' ? '검토' : '승인'}</span><span className="text-gray-400">{cnt}</span></div> : null
+              })}
+              {(userStories as any[]).length === 0 && <span className="text-[10px] text-gray-300">없음</span>}
+            </div>
+          </div>
         </div>
 
         {dashboard?.taskProgress && (
-          <div className="mb-6">
-            <ProgressCard
-              avgProgress={dashboard.taskProgress.avgProgress}
-              total={dashboard.taskProgress.total}
-              completed={dashboard.taskProgress.completed}
-              inProgress={inProgress}
-              onHold={onHold}
-              issueCount={issueCount}
-              riskCount={riskCount}
-            />
-          </div>
+          <ProgressCard
+            avgProgress={dashboard.taskProgress.avgProgress}
+            total={dashboard.taskProgress.total}
+            completed={dashboard.taskProgress.completed}
+            inProgress={inProgress}
+            onHold={onHold}
+            issueCount={issueCount}
+            riskCount={riskCount}
+          />
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <RecentActivity dashboard={dashboard as Record<string, unknown>} />
-          <div className="bg-white rounded-lg border p-4">
+          <div className="bg-white rounded-lg border p-4 card-elevated">
             <h3 className="text-sm font-semibold text-gray-600 mb-3">프로젝트 멤버</h3>
             <div className="flex gap-2 flex-wrap">
               {project?.members?.map(m => (
                 <div key={m.user.id} className="flex items-center gap-2 bg-gray-50 rounded-full px-3 py-1">
-                  <div className="w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center text-xs font-medium text-blue-700">
+                  <div className="w-5 h-5 rounded-full bg-[#5E6AD2]/20 flex items-center justify-center text-[10px] font-medium text-[#5E6AD2]">
                     {m.user.name[0]}
                   </div>
-                  <span className="text-sm">{m.user.name}</span>
+                  <span className="text-xs">{m.user.name}</span>
                 </div>
               ))}
             </div>
           </div>
         </div>
+        </div>
       </div>
+
+      <MarkdownImportModal
+        open={showAnalyze}
+        onClose={() => setShowAnalyze(false)}
+        projectId={projectId!}
+        queryKey={['requirements', projectId ?? '']}
+      />
     </AppLayout>
   )
 }

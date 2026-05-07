@@ -117,6 +117,7 @@ export function VersionSection({ projectId, entityType }: Props) {
             <Button variant="outline" onClick={() => setShowSave(false)}>취소</Button>
             <Button
               disabled={!form.version || !form.label || saveMutation.isPending}
+              disabledReason={!form.version || !form.label ? "필수 항목을 입력하세요" : "처리 중입니다..."}
               onClick={() => saveMutation.mutate()}
             >
               저장

@@ -12,6 +12,9 @@ import { TraceabilityModule } from './traceability/traceability.module';
 import { AdminModule } from './admin/admin.module';
 import { AIModule } from './ai/ai.module';
 import { ExportModule } from './export/export.module';
+import { DesignModule } from './design/design.module';
+import { ChangeRequestModule } from './change-request/change-request.module';
+import { UsecaseModule } from './usecase/usecase.module';
 
 @Module({
   imports: [
@@ -28,6 +31,9 @@ import { ExportModule } from './export/export.module';
     AdminModule,
     AIModule,
     ExportModule,
+    DesignModule,
+    ChangeRequestModule,
+    UsecaseModule,
   ],
 })
 export class AppModule {}

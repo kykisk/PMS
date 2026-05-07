@@ -47,4 +47,20 @@ export class AdminController {
   @Put('templates/:id')
   @ApiOperation({ summary: '산출물 템플릿 수정' })
   updateTemplate(@Param('id') id: string, @Body() body: any) { return this.svc.updateExportTemplate(id, body); }
+
+  @Get('llm-access')
+  @ApiOperation({ summary: 'LLM 접근 권한 목록' })
+  listLLMAccess() { return this.svc.listLLMAccess(); }
+
+  @Post('llm-access')
+  @ApiOperation({ summary: 'LLM 접근 권한 부여' })
+  grantLLMAccess(@Body() body: { userId: string; llmConfigId: string }) {
+    return this.svc.grantLLMAccess(body.userId, body.llmConfigId);
+  }
+
+  @Delete('llm-access/:userId/:llmConfigId')
+  @ApiOperation({ summary: 'LLM 접근 권한 회수' })
+  revokeLLMAccess(@Param('userId') userId: string, @Param('llmConfigId') llmConfigId: string) {
+    return this.svc.revokeLLMAccess(userId, llmConfigId);
+  }
 }

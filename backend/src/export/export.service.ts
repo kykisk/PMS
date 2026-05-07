@@ -195,4 +195,67 @@ export class ExportService {
       })),
     };
   }
+
+  async dbDesignExcel(projectId: string): Promise<Buffer> {
+    const tables = await this.prisma.dbTable.findMany({
+      where: { projectId },
+      include: { feature: { select: { code: true, title: true } } },
+      orderBy: { name: 'asc' },
+    });
+
+    const wb = XLSX.utils.book_new();
+
+    const summaryData = [
+      ['테이블명', '설명', '연결 기능', '컬럼 수', '인덱스 수'],
+      ...tables.map(t => [
+        t.name,
+        t.description ?? '',
+        t.feature ? `${t.feature.code} - ${t.feature.title}` : '',
+        Array.isArray(t.columns) ? (t.columns as any[]).length : 0,
+        Array.isArray(t.indexes) ? (t.indexes as any[]).length : 0,
+      ]),
+    ];
+    const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+    summaryWs['!cols'] = [20, 30, 25, 8, 8].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, summaryWs, '테이블 목록');
+
+    for (const table of tables) {
+      const cols = Array.isArray(table.columns) ? (table.columns as any[]) : [];
+      const colData = [
+        ['컬럼명', '타입', 'Nullable', 'PK', 'FK (참조)', '설명'],
+        ...cols.map((c: any) => [
+          c.name ?? '', c.type ?? '', c.nullable ? 'Y' : 'N',
+          c.primaryKey ? 'Y' : '', c.foreignKey ?? '', c.description ?? '',
+        ]),
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(colData);
+      ws['!cols'] = [20, 15, 8, 5, 25, 30].map(w => ({ wch: w }));
+      const sheetName = table.name.slice(0, 31);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    }
+
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  }
+
+  async apiDesignExcel(projectId: string): Promise<Buffer> {
+    const specs = await this.prisma.apiSpec.findMany({
+      where: { projectId },
+      include: { feature: { select: { code: true, title: true } } },
+      orderBy: [{ path: 'asc' }, { method: 'asc' }],
+    });
+
+    const data = [
+      ['Method', 'Path', '요약', '설명', '연결 기능', 'Request Body', 'Response (200)', '상태코드'],
+      ...specs.map(a => [
+        a.method, a.path, a.summary, a.description ?? '',
+        a.feature ? `${a.feature.code} - ${a.feature.title}` : '',
+        a.requestBody ? JSON.stringify(a.requestBody, null, 2) : '',
+        a.responseBody ? JSON.stringify(a.responseBody, null, 2) : '',
+        Array.isArray(a.statusCodes)
+          ? (a.statusCodes as any[]).map(s => `${s.code} ${s.description}`).join(', ')
+          : '',
+      ]),
+    ];
+    return this.buildExcel(data, 'API 명세', [8, 35, 25, 30, 20, 40, 40, 25]);
+  }
 }

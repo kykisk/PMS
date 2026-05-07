@@ -7,8 +7,10 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Plus, Search, Pencil, Trash2, FileUp, Sparkles, RefreshCw, Download, ChevronDown } from 'lucide-react'
 import { requirementApi, type RequirementPayload } from '@/api/requirement.api'
+import { useCaseApi, userStoryApi } from '@/api/usecase.api'
 import { exportApi } from '@/api/export.api'
 import { aiStatusApi } from '@/api/admin.api'
+import { designApi } from '@/api/design.api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,10 +19,12 @@ import { Badge } from '@/components/shared/Badge'
 import AppLayout from '@/components/layout/AppLayout'
 import { ExcelImportModal } from '@/components/shared/ExcelImportModal'
 import { SpecImportModal } from '@/components/shared/SpecImportModal'
+import { MarkdownImportModal } from '@/components/shared/MarkdownImportModal'
 import { Pagination } from '@/components/shared/Pagination'
 import { AISuggestButton } from '@/components/shared/AISuggestButton'
 import { TableSkeleton } from '@/components/shared/Skeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { TraceIndicator } from '@/components/shared/TraceIndicator'
 
 
 const schema = z.object({
@@ -48,8 +52,20 @@ export default function RequirementListPage() {
   const [showImport, setShowImport] = useState(false)
   const [showSpecImport, setShowSpecImport] = useState(false)
   const [showSpecUpdate, setShowSpecUpdate] = useState(false)
+  const [showMarkdown, setShowMarkdown] = useState(false)
   const [editTarget, setEditTarget] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const toggleSelect = (id: string) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+  const toggleAll = () => {
+    setSelected(prev => prev.size === requirements.length ? new Set() : new Set(requirements.map(i => i.id)))
+  }
 
   const { data: aiStatus } = useQuery({
     queryKey: ['ai-status', projectId],
@@ -69,6 +85,27 @@ export default function RequirementListPage() {
   })
   const requirements = result?.data ?? []
 
+  const { data: allUCs = [] } = useQuery({
+    queryKey: ['use-cases', projectId],
+    queryFn: () => useCaseApi.list(projectId!),
+    enabled: !!projectId,
+  })
+  const { data: allUSs = [] } = useQuery({
+    queryKey: ['user-stories', projectId],
+    queryFn: () => userStoryApi.list(projectId!),
+    enabled: !!projectId,
+  })
+  const { data: allDbTables = [] } = useQuery({
+    queryKey: ['design-db', projectId],
+    queryFn: () => designApi.listDbTables(projectId!),
+    enabled: !!projectId,
+  })
+  const { data: allApiSpecs = [] } = useQuery({
+    queryKey: ['design-api', projectId],
+    queryFn: () => designApi.listApiSpecs(projectId!),
+    enabled: !!projectId,
+  })
+
   const createMutation = useMutation({
     mutationFn: (data: RequirementPayload) => requirementApi.create(projectId!, data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['requirements', projectId] }); setShowCreate(false); reset() },
@@ -83,6 +120,16 @@ export default function RequirementListPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => requirementApi.remove(projectId!, id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['requirements', projectId] }),
+  })
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map(id => requirementApi.remove(projectId!, id)))
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['requirements', projectId] })
+      setSelected(new Set())
+    },
   })
 
   const { register, handleSubmit, reset, setValue, watch } = useForm<FormData>({
@@ -110,15 +157,15 @@ export default function RequirementListPage() {
 
   return (
     <AppLayout>
-      <div className="p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">{t('nav.requirements')}</h2>
+      <div className="p-4">
+        <div className="flex justify-between items-center mb-3">
+          <h2 className="text-sm font-bold text-gray-800">{t('nav.requirements')}</h2>
           <div className="flex gap-2">
             <div className="relative group">
-              <Button variant="outline">
-                <Download size={16} />
+              <Button variant="outline" size="sm" className="h-7 text-xs px-2">
+                <Download size={12} />
                 내보내기
-                <ChevronDown size={14} />
+                <ChevronDown size={12} />
               </Button>
               <div className="hidden group-hover:block absolute right-0 top-full mt-1 w-40 bg-white border rounded-lg shadow-lg z-20 py-1">
                 <button onClick={() => exportApi.requirements(projectId!)} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left">
@@ -132,60 +179,76 @@ export default function RequirementListPage() {
               </div>
             </div>
             <div className="relative group">
-              <Button variant="outline">
-                <FileUp size={16} />
+              <Button variant="outline" size="sm" className="h-7 text-xs px-2">
+                <FileUp size={12} />
                 가져오기
-                <ChevronDown size={14} />
+                <ChevronDown size={12} />
               </Button>
-              <div className="hidden group-hover:block absolute right-0 top-full mt-1 w-48 bg-white border rounded-lg shadow-lg z-20 py-1">
-                <button onClick={() => setShowImport(true)} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left">
-                  <FileUp size={14} />
-                  엑셀 Import
+              <div className="hidden group-hover:block absolute right-0 top-full mt-1 w-52 bg-white border rounded-lg shadow-lg z-20 py-1">
+                <button onClick={() => setShowImport(true)} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 w-full text-left">
+                  <FileUp size={12} />
+                  엑셀 파일 Import
                 </button>
-                <button onClick={() => setShowSpecImport(true)} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left">
-                  <Sparkles size={14} />
-                  AI 기술서 Import
+                <div className="border-t my-1" />
+                <button onClick={() => setShowSpecImport(true)} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 w-full text-left">
+                  <Sparkles size={12} />
+                  기술서(엑셀) AI 분석
                 </button>
-                <button onClick={() => setShowSpecUpdate(true)} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left">
-                  <RefreshCw size={14} />
-                  AI 업데이트
+                <button onClick={() => setShowSpecUpdate(true)} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 w-full text-left">
+                  <RefreshCw size={12} />
+                  기술서 변경점 비교 (diff)
                 </button>
               </div>
             </div>
-            <Button onClick={() => { setEditTarget(null); reset({ priority: 'medium', status: 'new' }); setShowCreate(true) }}>
-              <Plus size={16} />
+            <Button size="sm" className="h-7 text-xs px-2" onClick={() => { setEditTarget(null); reset({ priority: 'medium', status: 'new' }); setShowCreate(true) }}>
+              <Plus size={12} />
               {t('common.create')}
             </Button>
           </div>
         </div>
 
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-3">
           <div className="relative flex-1 max-w-xs">
-            <Search size={14} className="absolute left-3 top-3 text-gray-400" />
+            <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
             <Input
-              className="pl-8"
+              className="pl-7 h-7 text-xs"
               placeholder={t('common.search')}
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => { setSearch(e.target.value); setPage(1); setSelected(new Set()) }}
             />
           </div>
           <select
-            className="border rounded-md px-3 py-2 text-sm"
+            className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]"
             value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
+            onChange={e => { setFilterStatus(e.target.value); setPage(1); setSelected(new Set()) }}
           >
             <option value="">상태 전체</option>
             {STATUSES.map(s => <option key={s} value={s}>{t(`status.${s}`)}</option>)}
           </select>
           <select
-            className="border rounded-md px-3 py-2 text-sm"
+            className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]"
             value={filterPriority}
-            onChange={e => setFilterPriority(e.target.value)}
+            onChange={e => { setFilterPriority(e.target.value); setPage(1); setSelected(new Set()) }}
           >
             <option value="">우선순위 전체</option>
             {PRIORITIES.map(p => <option key={p} value={p}>{t(`priority.${p}`)}</option>)}
           </select>
         </div>
+
+        {selected.size > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-md mb-2">
+            <span className="text-xs text-red-600 font-medium">{selected.size}개 선택됨</span>
+            <button
+              onClick={() => { if (confirm(`선택한 ${selected.size}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate([...selected]) }}
+              className="text-xs px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
+            >선택 삭제</button>
+            <button
+              onClick={() => { if (confirm(`전체 ${requirements.length}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate(requirements.map(i => i.id)) }}
+              className="text-xs px-2 py-0.5 border border-red-400 text-red-600 rounded hover:bg-red-50"
+            >전체 삭제</button>
+            <button onClick={() => setSelected(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">취소</button>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="bg-white rounded-lg border p-6">
@@ -200,29 +263,63 @@ export default function RequirementListPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 w-24">ID</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 w-24">분류</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">요구사항명</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 w-24">우선순위</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 w-24">상태</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 w-20">입력경로</th>
-                <th className="w-20 px-4 py-3"></th>
+                <th className="w-8 px-2 py-1.5">
+                  <input type="checkbox"
+                    checked={requirements.length > 0 && selected.size === requirements.length}
+                    onChange={toggleAll}
+                    className="w-3.5 h-3.5"
+                  />
+                </th>
+                <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">ID</th>
+                <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">분류</th>
+                <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px]">요구사항명</th>
+                <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">우선순위</th>
+                <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">상태</th>
+                <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-20">입력경로</th>
+                <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-20">연결</th>
+                <th className="w-20 px-3 py-1.5"></th>
               </tr>
             </thead>
             <tbody>
               {requirements.map(req => (
                   <tr
                     key={req.id}
-                    className="border-b hover:bg-gray-50 cursor-pointer transition-colors"
+                    className="border-b hover:bg-gray-50 cursor-pointer transition-colors duration-200"
                     onClick={() => navigate(`/projects/${projectId}/requirements/${req.id}`)}
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{req.code}</td>
-                    <td className="px-4 py-3 text-gray-600">{req.category ?? '-'}</td>
-                    <td className="px-4 py-3 font-medium">{req.title}</td>
-                    <td className="px-4 py-3"><Badge value={req.priority} label={t(`priority.${req.priority}`)} /></td>
-                    <td className="px-4 py-3"><Badge value={req.status} label={t(`status.${req.status}`)} /></td>
-                    <td className="px-4 py-3 text-xs text-gray-400">{req.source}</td>
-                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                    <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox"
+                        checked={selected.has(req.id)}
+                        onChange={() => toggleSelect(req.id)}
+                        className="w-3.5 h-3.5"
+                      />
+                    </td>
+                    <td className="px-3 py-1.5 font-mono text-xs text-gray-500">{req.code}</td>
+                    <td className="px-3 py-1.5 text-gray-600"><span className="truncate block max-w-[100px]" title={req.category ?? ''}>{(req.category ?? '-').length > 8 ? (req.category ?? '').slice(0, 8) + '...' : req.category ?? '-'}</span></td>
+                    <td className="px-3 py-1.5 font-medium"><span className="truncate block max-w-[200px]" title={req.title}>{req.title.length > 20 ? req.title.slice(0, 20) + '...' : req.title}</span></td>
+                    <td className="px-3 py-1.5"><Badge value={req.priority} label={t(`priority.${req.priority}`)} /></td>
+                    <td className="px-3 py-1.5"><Badge value={req.status} label={t(`status.${req.status}`)} /></td>
+                    <td className="px-3 py-1.5 text-xs text-gray-400">{req.source}</td>
+                    <td className="px-3 py-1.5">
+                      <TraceIndicator
+                        upper={[
+                          { count: (allUCs as any[]).filter(u => u.requirementId === req.id).length, label: 'UC', colorClass: 'bg-indigo-100 text-indigo-600' },
+                          { count: (allUSs as any[]).filter(u => u.requirementId === req.id).length, label: 'US', colorClass: 'bg-pink-100 text-pink-600' },
+                        ]}
+                        lower={[
+                          { count: (req as any).features?.length ?? 0, label: '기능', colorClass: 'bg-purple-100 text-purple-600' },
+                          { count: (() => {
+                            const fIds = ((req as any).features ?? []).map((f: any) => f.id)
+                            return (allDbTables as any[]).filter(d => fIds.includes(d.featureId)).length
+                          })(), label: 'DB', colorClass: 'bg-green-100 text-green-700' },
+                          { count: (() => {
+                            const fIds = ((req as any).features ?? []).map((f: any) => f.id)
+                            return (allApiSpecs as any[]).filter(a => fIds.includes(a.featureId)).length
+                          })(), label: 'API', colorClass: 'bg-cyan-100 text-cyan-700' },
+                        ]}
+                      />
+                    </td>
+                    <td className="px-3 py-1.5" onClick={e => e.stopPropagation()}>
                       <div className="flex gap-1">
                         <button
                           onClick={() => { openEdit(req); setShowCreate(true) }}
@@ -319,7 +416,7 @@ export default function RequirementListPage() {
             <Button type="button" variant="outline" onClick={() => { setShowCreate(false); setEditTarget(null); reset() }}>
               {t('common.cancel')}
             </Button>
-            <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+            <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} disabledReason="처리 중입니다...">
               {t('common.save')}
             </Button>
           </div>
@@ -347,6 +444,13 @@ export default function RequirementListPage() {
         projectId={projectId!}
         queryKey={['requirements', projectId ?? '']}
         mode="update"
+      />
+
+      <MarkdownImportModal
+        open={showMarkdown}
+        onClose={() => setShowMarkdown(false)}
+        projectId={projectId!}
+        queryKey={['requirements', projectId ?? '']}
       />
     </AppLayout>
   )
