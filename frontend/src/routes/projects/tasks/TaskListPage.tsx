@@ -1,17 +1,16 @@
-import { useState, useMemo, Fragment } from 'react'
+import { useState, useMemo, Fragment, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Plus, Search, Pencil, Trash2, AlertTriangle, Download, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, AlertTriangle, Download, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Sparkles } from 'lucide-react'
 import { taskApi, type TaskPayload } from '@/api/task.api'
 import { featureApi } from '@/api/feature.api'
 import { projectApi } from '@/api/project.api'
 import { exportApi } from '@/api/export.api'
 import { aiStatusApi } from '@/api/admin.api'
-import { Pagination } from '@/components/shared/Pagination'
 import { AISuggestButton } from '@/components/shared/AISuggestButton'
 import { TableSkeleton } from '@/components/shared/Skeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -23,6 +22,8 @@ import { Modal } from '@/components/shared/Modal'
 import AppLayout from '@/components/layout/AppLayout'
 import { TraceIndicator } from '@/components/shared/TraceIndicator'
 import { GanttView } from '@/components/shared/GanttView'
+import { FeatureTaskUpdateModal } from '@/components/shared/FeatureTaskUpdateModal'
+import { MultiTaskGenerateModal } from '@/components/shared/MultiTaskGenerateModal'
 
 const schema = z.object({
   title: z.string().min(1),
@@ -59,12 +60,17 @@ export default function TaskListPage() {
   const [filterStatus, setFilterStatus] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [editTarget, setEditTarget] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
   const [allExpanded, setAllExpanded] = useState(true)
   const [viewTab, setViewTab] = useState<'list' | 'gantt'>('list')
   const [ganttSelectedTask, setGanttSelectedTask] = useState<any>(null)
+  const [ganttEditing, setGanttEditing] = useState(false)
+  const [ganttEditForm, setGanttEditForm] = useState<any>({})
+  const [depTargetId, setDepTargetId] = useState('')
+  const [depType, setDepType] = useState('FS')
+  const [updateTarget, setUpdateTarget] = useState<{ id: string; code: string; title: string; status: string } | null>(null)
+  const [showMultiGen, setShowMultiGen] = useState(false)
 
   const toggleSelect = (id: string) => setSelected(prev => {
     const next = new Set(prev)
@@ -75,6 +81,14 @@ export default function TaskListPage() {
   const toggleAllSelect = () => {
     setSelected(prev => prev.size === tasks.length ? new Set() : new Set(tasks.map(i => i.id)))
   }
+  const toggleGroupSelect = (ids: string[]) => {
+    setSelected(prev => {
+      const allSelected = ids.every(id => prev.has(id))
+      const next = new Set(prev)
+      ids.forEach(id => allSelected ? next.delete(id) : next.add(id))
+      return next
+    })
+  }
 
   const { data: aiStatus } = useQuery({
     queryKey: ['ai-status', projectId],
@@ -82,12 +96,31 @@ export default function TaskListPage() {
     enabled: !!projectId,
   })
 
-  const { data: result, isLoading } = useQuery({
-    queryKey: ['tasks', projectId, search, filterStatus, page],
-    queryFn: () => taskApi.list(projectId!, { search: search || undefined, status: filterStatus || undefined, page }),
+  const {
+    data: infiniteData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+  } = useInfiniteQuery({
+    queryKey: ['tasks', projectId, search, filterStatus],
+    queryFn: ({ pageParam }) => taskApi.list(projectId!, { search: search || undefined, status: filterStatus || undefined, page: pageParam as number }),
+    initialPageParam: 1,
+    getNextPageParam: (last: any) => last.page < last.totalPages ? last.page + 1 : undefined,
     enabled: !!projectId,
   })
-  const tasks = result?.data ?? []
+  const tasks = useMemo(() => infiniteData?.pages.flatMap((p: any) => p.data) ?? [], [infiniteData])
+
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage()
+    }, { threshold: 0.1 })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const { data: featureResult } = useQuery({
     queryKey: ['features', projectId],
@@ -102,6 +135,12 @@ export default function TaskListPage() {
     enabled: !!projectId && viewTab === 'gantt',
   })
   const allTasks = useMemo(() => allTasksResult?.data ?? [], [allTasksResult])
+
+  const { data: dependencies = [] } = useQuery({
+    queryKey: ['task-deps', projectId],
+    queryFn: () => taskApi.listDependencies(projectId!),
+    enabled: !!projectId && viewTab === 'gantt',
+  })
 
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
@@ -127,6 +166,16 @@ export default function TaskListPage() {
   const bulkDeleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
       await Promise.all(ids.map(id => taskApi.remove(projectId!, id)))
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks', projectId] })
+      setSelected(new Set())
+    },
+  })
+
+  const bulkStatusMutation = useMutation({
+    mutationFn: async ({ ids, status }: { ids: string[]; status: string }) => {
+      await Promise.all(ids.map(id => taskApi.update(projectId!, id, { status })))
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks', projectId] })
@@ -165,6 +214,11 @@ export default function TaskListPage() {
           <div className="flex gap-2">
             <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => exportApi.wbs(projectId!)}><Download size={12} />WBS Excel</Button>
             <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => exportApi.wbsPdf(projectId!)}><Download size={12} />WBS PDF</Button>
+            {aiStatus?.configured && (
+              <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setShowMultiGen(true)}>
+                <Sparkles size={12} />AI Task 생성
+              </Button>
+            )}
             <Button size="sm" className="h-7 text-xs px-2" onClick={() => { setEditTarget(null); reset({ status: 'pending', progress: 0 }); setShowCreate(true) }}>
               <Plus size={12} />{t('common.create')}
             </Button>
@@ -180,17 +234,28 @@ export default function TaskListPage() {
         <div className="flex gap-2 mb-3">
           <div className="relative flex-1 max-w-xs">
             <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
-            <Input className="pl-7 h-7 text-xs" placeholder={t('common.search')} value={search} onChange={e => { setSearch(e.target.value); setPage(1); setSelected(new Set()) }} />
+            <Input className="pl-7 h-7 text-xs" placeholder={t('common.search')} value={search} onChange={e => { setSearch(e.target.value); setSelected(new Set()) }} />
           </div>
-          <select className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); setSelected(new Set()) }}>
+          <select className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setSelected(new Set()) }}>
             <option value="">상태 전체</option>
             {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
           </select>
         </div>
 
         {selected.size > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-md mb-2">
-            <span className="text-xs text-red-600 font-medium">{selected.size}개 선택됨</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg mb-2">
+            <span className="text-xs text-blue-700 font-medium">{selected.size}개 선택됨</span>
+            <select className="h-7 text-xs border rounded px-2" defaultValue="" onChange={e => {
+              const status = e.target.value
+              if (!status) return
+              if (confirm(`선택한 ${selected.size}개를 "${STATUS_LABELS[status]}"으로 변경하시겠습니까?`)) {
+                bulkStatusMutation.mutate({ ids: [...selected], status })
+              }
+              e.target.value = ''
+            }}>
+              <option value="">상태변경...</option>
+              {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+            </select>
             <button
               onClick={() => { if (confirm(`선택한 ${selected.size}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate([...selected]) }}
               className="text-xs px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
@@ -255,7 +320,15 @@ export default function TaskListPage() {
                 {groups.map(([key, group]) => (
                   <Fragment key={key}>
                      <tr className="bg-gray-50/50 border-b cursor-pointer hover:bg-gray-100/50" onClick={() => toggleGroup(key)}>
-                       <td colSpan={9} className="px-3 py-1.5">
+                       <td className="px-2 py-1.5 w-8" onClick={e => e.stopPropagation()}>
+                         <input type="checkbox"
+                           className="w-3.5 h-3.5"
+                           checked={group.tasks.length > 0 && group.tasks.every((t: any) => selected.has(t.id))}
+                           ref={el => { if (el) el.indeterminate = group.tasks.some((t: any) => selected.has(t.id)) && !group.tasks.every((t: any) => selected.has(t.id)) }}
+                           onChange={() => toggleGroupSelect(group.tasks.map((t: any) => t.id))}
+                         />
+                       </td>
+                       <td colSpan={8} className="px-3 py-1.5">
                          <div className="flex items-center gap-2 flex-wrap">
                            {isExpanded(key) ? <ChevronDown size={12} className="text-gray-400" /> : <ChevronRight size={12} className="text-gray-400" />}
                            <span className="text-xs font-medium text-[#5E6AD2]">
@@ -268,6 +341,17 @@ export default function TaskListPage() {
                              </span>
                            )}
                            <span className="text-[10px] text-gray-400">({group.tasks.length})</span>
+                           {group.tasks.some((t: any) => t.outdated) && (
+                             <span className="text-amber-500 text-[11px] font-medium">⚠️ 상위 변경됨</span>
+                           )}
+                           {group.feature && group.tasks.some((t: any) => t.outdated) && (
+                             <button
+                               onClick={e => { e.stopPropagation(); setUpdateTarget({ id: group.feature!.id, code: group.feature!.code, title: group.feature!.title, status: (group.feature as any).status ?? '' }) }}
+                               className="flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#5E6AD2] text-white rounded hover:bg-[#4f5bb8] transition-colors"
+                             >
+                               <Sparkles size={10} />AI 업데이트
+                             </button>
+                           )}
                          </div>
                        </td>
                     </tr>
@@ -282,7 +366,7 @@ export default function TaskListPage() {
                         </td>
                         <td className="px-3 py-1.5 pl-8 font-mono text-xs text-gray-500">{task.code}</td>
                         <td className="px-3 py-1.5 font-medium">
-                          <span className="truncate block max-w-[200px]" title={task.title}>{task.title.length > 20 ? task.title.slice(0, 20) + '...' : task.title}</span>
+                          <span className="truncate block max-w-[200px]" title={task.title}>{task.title.length > 20 ? task.title.slice(0, 20) + '...' : task.title}{task.outdated && <span title={task.outdatedReason || '상위 변경됨'} className="text-amber-500 ml-1 text-[10px]">⚠️</span>}</span>
                         </td>
                         <td className="px-3 py-1.5"><ProgressBar value={task.progress} /></td>
                         <td className="px-3 py-1.5 text-xs text-gray-400">
@@ -323,7 +407,9 @@ export default function TaskListPage() {
           </div>
           )
         })()}
-        <Pagination page={page} totalPages={result?.totalPages ?? 1} total={result?.total ?? 0} limit={50} onChange={setPage} />
+        <div ref={sentinelRef} className="py-3 text-center text-[11px] text-gray-400">
+          {isFetchingNextPage ? '로딩 중...' : hasNextPage ? '' : tasks.length > 0 ? `총 ${tasks.length}개` : ''}
+        </div>
         </>)}
 
         {viewTab === 'gantt' && (
@@ -332,6 +418,7 @@ export default function TaskListPage() {
               <GanttView
                 projectId={projectId!}
                 tasks={allTasks}
+                dependencies={dependencies}
                 projectStartDate={project?.startDate}
                 onDateChange={async (task, start, end) => {
                   await taskApi.update(projectId!, task.id, { startDate: start.toISOString(), endDate: end.toISOString() })
@@ -343,67 +430,206 @@ export default function TaskListPage() {
                   qc.invalidateQueries({ queryKey: ['tasks', projectId] })
                   qc.invalidateQueries({ queryKey: ['tasks-all', projectId] })
                 }}
-                onSelect={(taskId) => setGanttSelectedTask(allTasks.find(t => t.id === taskId) || null)}
+                 onSelect={(taskId) => {
+                   setGanttSelectedTask(allTasks.find(t => t.id === taskId) || null)
+                   setGanttEditing(false)
+                   setDepTargetId('')
+                   setDepType('FS')
+                 }}
                 onDoubleClick={(taskId) => navigate(`/projects/${projectId}/tasks/${taskId}`)}
               />
             </div>
             {ganttSelectedTask && (
-              <div className="w-72 flex-shrink-0 bg-white border rounded-lg p-3 space-y-3 overflow-y-auto max-h-[70vh] shadow-lg">
-                <div className="flex items-center justify-between">
+              <div className="w-72 flex-shrink-0 bg-white border rounded-lg overflow-y-auto max-h-[70vh] shadow-lg flex flex-col">
+                <div className="flex items-center justify-between px-3 py-2 border-b bg-gray-50 flex-shrink-0">
                   <span className="text-xs font-bold text-gray-800">Task 상세</span>
-                  <button onClick={() => setGanttSelectedTask(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+                  <div className="flex items-center gap-1.5">
+                    {!ganttEditing ? (
+                      <button
+                        onClick={() => {
+                          setGanttEditForm({
+                            title: ganttSelectedTask.title,
+                            description: ganttSelectedTask.description ?? '',
+                            status: ganttSelectedTask.status,
+                            progress: ganttSelectedTask.progress ?? 0,
+                            startDate: ganttSelectedTask.startDate ? ganttSelectedTask.startDate.slice(0, 10) : '',
+                            endDate: ganttSelectedTask.endDate ? ganttSelectedTask.endDate.slice(0, 10) : '',
+                          })
+                          setGanttEditing(true)
+                        }}
+                        className="text-xs px-2 py-0.5 rounded border border-[#5E6AD2] text-[#5E6AD2] hover:bg-[#5E6AD2]/5 transition-colors"
+                      >편집</button>
+                    ) : (
+                      <>
+                        <button
+                          onClick={async () => {
+                            await taskApi.update(projectId!, ganttSelectedTask.id, {
+                              title: ganttEditForm.title,
+                              description: ganttEditForm.description || undefined,
+                              status: ganttEditForm.status,
+                              progress: Number(ganttEditForm.progress),
+                              startDate: ganttEditForm.startDate ? new Date(ganttEditForm.startDate).toISOString() : undefined,
+                              endDate: ganttEditForm.endDate ? new Date(ganttEditForm.endDate).toISOString() : undefined,
+                            })
+                            qc.invalidateQueries({ queryKey: ['tasks', projectId] })
+                            qc.invalidateQueries({ queryKey: ['tasks-all', projectId] })
+                            setGanttSelectedTask((prev: any) => ({ ...prev, ...ganttEditForm }))
+                            setGanttEditing(false)
+                          }}
+                          className="text-xs px-2 py-0.5 rounded bg-[#5E6AD2] text-white hover:bg-[#4f5bb8] transition-colors"
+                        >저장</button>
+                        <button onClick={() => setGanttEditing(false)} className="text-xs px-2 py-0.5 rounded border border-gray-200 text-gray-500 hover:bg-gray-50">취소</button>
+                      </>
+                    )}
+                    <button onClick={() => { setGanttSelectedTask(null); setGanttEditing(false) }} className="text-gray-400 hover:text-gray-600 ml-1">✕</button>
+                  </div>
                 </div>
-                <div className="space-y-2 text-xs">
+
+                <div className="p-3 space-y-3 text-xs flex-1">
                   <div>
-                    <span className="text-gray-400">코드</span>
+                    <span className="text-gray-400 block mb-0.5">코드</span>
                     <p className="font-mono text-gray-700">{ganttSelectedTask.code}</p>
                   </div>
+
                   <div>
-                    <span className="text-gray-400">Task명</span>
-                    <p className="font-medium text-gray-800">{ganttSelectedTask.title}</p>
+                    <span className="text-gray-400 block mb-0.5">Task명</span>
+                    {ganttEditing
+                      ? <input className="w-full border rounded px-2 py-1 text-xs" value={ganttEditForm.title} onChange={e => setGanttEditForm((f: any) => ({ ...f, title: e.target.value }))} />
+                      : <p className="font-medium text-gray-800">{ganttSelectedTask.title}</p>}
                   </div>
-                  {ganttSelectedTask.description && (
-                    <div>
-                      <span className="text-gray-400">설명</span>
-                      <p className="text-gray-600 whitespace-pre-wrap">{ganttSelectedTask.description}</p>
-                    </div>
-                  )}
+
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">설명</span>
+                    {ganttEditing
+                      ? <textarea className="w-full border rounded px-2 py-1 text-xs resize-none" rows={3} value={ganttEditForm.description} onChange={e => setGanttEditForm((f: any) => ({ ...f, description: e.target.value }))} />
+                      : ganttSelectedTask.description
+                        ? <p className="text-gray-600 whitespace-pre-wrap">{ganttSelectedTask.description}</p>
+                        : <p className="text-gray-300">-</p>}
+                  </div>
+
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <span className="text-gray-400">시작일</span>
-                      <p className="text-gray-700">{ganttSelectedTask.startDate ? new Date(ganttSelectedTask.startDate).toLocaleDateString('ko-KR') : '-'}</p>
+                      <span className="text-gray-400 block mb-0.5">시작일</span>
+                      {ganttEditing
+                        ? <input type="date" className="w-full border rounded px-2 py-1 text-xs" value={ganttEditForm.startDate} onChange={e => setGanttEditForm((f: any) => ({ ...f, startDate: e.target.value }))} />
+                        : <p className="text-gray-700">{ganttSelectedTask.startDate ? new Date(ganttSelectedTask.startDate).toLocaleDateString('ko-KR') : '-'}</p>}
                     </div>
                     <div>
-                      <span className="text-gray-400">종료일</span>
-                      <p className="text-gray-700">{ganttSelectedTask.endDate ? new Date(ganttSelectedTask.endDate).toLocaleDateString('ko-KR') : '-'}</p>
+                      <span className="text-gray-400 block mb-0.5">종료일</span>
+                      {ganttEditing
+                        ? <input type="date" className="w-full border rounded px-2 py-1 text-xs" value={ganttEditForm.endDate} onChange={e => setGanttEditForm((f: any) => ({ ...f, endDate: e.target.value }))} />
+                        : <p className="text-gray-700">{ganttSelectedTask.endDate ? new Date(ganttSelectedTask.endDate).toLocaleDateString('ko-KR') : '-'}</p>}
                     </div>
                   </div>
+
                   <div>
-                    <span className="text-gray-400">진척율</span>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-[#5E6AD2] rounded-full" style={{ width: `${ganttSelectedTask.progress || 0}%` }} />
+                    <span className="text-gray-400 block mb-0.5">진척율</span>
+                    {ganttEditing ? (
+                      <div className="flex items-center gap-2">
+                        <input type="range" min={0} max={100} step={5} className="flex-1 accent-[#5E6AD2]" value={ganttEditForm.progress} onChange={e => setGanttEditForm((f: any) => ({ ...f, progress: Number(e.target.value) }))} />
+                        <span className="w-8 text-right font-medium text-gray-700">{ganttEditForm.progress}%</span>
                       </div>
-                      <span className="text-gray-700 font-medium">{ganttSelectedTask.progress || 0}%</span>
-                    </div>
+                    ) : (
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-[#5E6AD2] rounded-full" style={{ width: `${ganttSelectedTask.progress || 0}%` }} />
+                        </div>
+                        <span className="text-gray-700 font-medium">{ganttSelectedTask.progress || 0}%</span>
+                      </div>
+                    )}
                   </div>
+
                   <div>
-                    <span className="text-gray-400">상태</span>
-                    <p className="text-gray-700">{ganttSelectedTask.status}</p>
+                    <span className="text-gray-400 block mb-0.5">상태</span>
+                    {ganttEditing
+                      ? <select className="w-full border rounded px-2 py-1 text-xs" value={ganttEditForm.status} onChange={e => setGanttEditForm((f: any) => ({ ...f, status: e.target.value }))}>
+                          {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+                        </select>
+                      : <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${ganttSelectedTask.status === 'completed' ? 'bg-green-100 text-green-700' : ganttSelectedTask.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : ganttSelectedTask.status === 'on_hold' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
+                          {STATUS_LABELS[ganttSelectedTask.status] || ganttSelectedTask.status}
+                        </span>}
                   </div>
+
                   {ganttSelectedTask.feature && (
                     <div>
-                      <span className="text-gray-400">연결 기능</span>
+                      <span className="text-gray-400 block mb-0.5">연결 기능</span>
                       <p className="text-[#5E6AD2]">{ganttSelectedTask.feature.code} - {ganttSelectedTask.feature.title}</p>
                     </div>
                   )}
+
+                  <div className="border-t pt-2">
+                    <span className="text-gray-500 font-medium block mb-1.5">의존성</span>
+                    {(dependencies as any[])
+                      .filter(d => d.fromTaskId === ganttSelectedTask.id || d.toTaskId === ganttSelectedTask.id)
+                      .map((d: any) => {
+                        const isFrom = d.fromTaskId === ganttSelectedTask.id
+                        const other = isFrom ? d.toTask : d.fromTask
+                        return (
+                          <div key={d.id} className="flex items-center justify-between py-0.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold flex-shrink-0 ${isFrom ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                {d.type}
+                              </span>
+                              <span className="text-[10px] text-gray-400 flex-shrink-0">{isFrom ? '→' : '←'}</span>
+                              <span className="text-[10px] text-gray-600 truncate">{other?.code} {other?.title}</span>
+                            </div>
+                            <button onClick={() => taskApi.removeDependency(projectId!, d.id).then(() => qc.invalidateQueries({ queryKey: ['task-deps', projectId] }))} className="text-gray-300 hover:text-red-500 flex-shrink-0 ml-1 text-xs">✕</button>
+                          </div>
+                        )
+                      })
+                    }
+                    {!ganttEditing && (
+                      <div className="mt-2 space-y-1.5 pt-1.5 border-t border-gray-100">
+                        <p className="text-[10px] text-gray-400">선행 Task 추가</p>
+                        <select
+                          className="w-full border rounded px-2 py-1 text-[10px] text-gray-600"
+                          value={depTargetId}
+                          onChange={e => setDepTargetId(e.target.value)}
+                        >
+                          <option value="">선행 Task 선택...</option>
+                          {allTasks
+                            .filter((t: any) => t.id !== ganttSelectedTask.id)
+                            .map((t: any) => (
+                              <option key={t.id} value={t.id}>{t.code} - {t.title.slice(0, 20)}</option>
+                            ))}
+                        </select>
+                        <div className="flex gap-1">
+                          {['FS', 'FF', 'SS', 'SF'].map(type => (
+                            <button
+                              key={type}
+                              onClick={() => setDepType(type)}
+                              className={`flex-1 text-[10px] py-1 rounded border font-medium transition-colors ${depType === type ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]' : 'border-gray-200 text-gray-500 hover:border-[#5E6AD2] hover:text-[#5E6AD2]'}`}
+                            >{type}</button>
+                          ))}
+                        </div>
+                        <button
+                          disabled={!depTargetId}
+                          onClick={() => {
+                            if (!depTargetId) return
+                            taskApi.createDependency(projectId!, depTargetId, ganttSelectedTask.id, depType)
+                              .then(() => {
+                                qc.invalidateQueries({ queryKey: ['task-deps', projectId] })
+                                setDepTargetId('')
+                              })
+                              .catch(() => alert('이미 존재하는 의존성이거나 오류가 발생했습니다.'))
+                          }}
+                          className="w-full text-[10px] py-1 rounded bg-[#5E6AD2] text-white hover:bg-[#4f5bb8] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          + 의존성 추가
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <button
-                  onClick={() => navigate(`/projects/${projectId}/tasks/${ganttSelectedTask.id}`)}
-                  className="w-full text-center text-xs py-1.5 bg-[#5E6AD2] text-white rounded hover:bg-[#6872D9] transition-colors"
-                >
-                  상세 페이지로 이동
-                </button>
+
+                <div className="px-3 pb-3 flex-shrink-0">
+                  <button
+                    onClick={() => navigate(`/projects/${projectId}/tasks/${ganttSelectedTask.id}`)}
+                    className="w-full text-center text-xs py-1.5 border border-[#5E6AD2] text-[#5E6AD2] rounded hover:bg-[#5E6AD2]/5 transition-colors"
+                  >
+                    상세 페이지로 이동
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -452,6 +678,15 @@ export default function TaskListPage() {
           </div>
         </form>
       </Modal>
+      {updateTarget && (
+        <FeatureTaskUpdateModal
+          open={!!updateTarget}
+          onClose={() => setUpdateTarget(null)}
+          projectId={projectId!}
+          feature={updateTarget}
+        />
+      )}
+      <MultiTaskGenerateModal open={showMultiGen} onClose={() => setShowMultiGen(false)} projectId={projectId!} />
     </AppLayout>
   )
 }

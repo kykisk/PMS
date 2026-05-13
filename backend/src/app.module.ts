@@ -15,11 +15,14 @@ import { ExportModule } from './export/export.module';
 import { DesignModule } from './design/design.module';
 import { ChangeRequestModule } from './change-request/change-request.module';
 import { UsecaseModule } from './usecase/usecase.module';
+import { TestExecutionModule } from './test-execution/test-execution.module';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    AuditModule,
     AuthModule,
     ProjectModule,
     RequirementModule,
@@ -34,6 +37,7 @@ import { UsecaseModule } from './usecase/usecase.module';
     DesignModule,
     ChangeRequestModule,
     UsecaseModule,
+    TestExecutionModule,
   ],
 })
 export class AppModule {}

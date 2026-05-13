@@ -29,13 +29,15 @@ export class FeatureService {
     });
   }
 
-  async findAll(projectId: string, query: { reqId?: string; status?: string; search?: string; page?: number; limit?: number }) {
+  async findAll(projectId: string, query: { reqId?: string; status?: string; search?: string; page?: number; limit?: number; hasNoScenarios?: boolean; hasNoTasks?: boolean }) {
     const page = Math.max(1, query.page ?? 1);
-    const limit = Math.min(100, query.limit ?? 50);
+    const limit = Math.min(500, query.limit ?? 50);
     const skip = (page - 1) * limit;
     const where: any = { projectId };
     if (query.reqId) where.reqId = query.reqId;
     if (query.status) where.status = query.status;
+    if (query.hasNoScenarios) where.testScenarios = { none: {} };
+    if (query.hasNoTasks) where.tasks = { none: {} };
     if (query.search) {
       where.OR = [
         { title: { contains: query.search, mode: 'insensitive' } },

@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/shared/Modal'
 import { VersionSection } from '@/components/shared/VersionSection'
 import { AncestorTags } from '@/components/shared/AncestorTags'
+import { OutdatedBanner } from '@/components/shared/OutdatedBanner'
 import AppLayout from '@/components/layout/AppLayout'
 
 const STATUSES = ['pending', 'in_progress', 'completed', 'on_hold']
@@ -57,17 +58,28 @@ export default function TaskDetailPage() {
 
   const updateMutation = useMutation({
     mutationFn: (data: Partial<TaskPayload>) => taskApi.update(projectId!, taskId!, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['task', projectId, taskId] }); setEditing(false) },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task', projectId, taskId] })
+      qc.invalidateQueries({ queryKey: ['tasks', projectId] })
+      setEditing(false)
+    },
   })
 
   const addIssueMutation = useMutation({
     mutationFn: (data: IssuePayload) => taskApi.addIssue(projectId!, taskId!, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['task', projectId, taskId] }); setShowIssue(false); resetIssue() },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task', projectId, taskId] })
+      qc.invalidateQueries({ queryKey: ['tasks', projectId] })
+      setShowIssue(false); resetIssue()
+    },
   })
 
   const removeIssueMutation = useMutation({
     mutationFn: (issueId: string) => taskApi.removeIssue(projectId!, taskId!, issueId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['task', projectId, taskId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task', projectId, taskId] })
+      qc.invalidateQueries({ queryKey: ['tasks', projectId] })
+    },
   })
 
   const { register, handleSubmit, reset } = useForm<Partial<TaskPayload>>()
@@ -99,6 +111,7 @@ export default function TaskDetailPage() {
   return (
     <AppLayout>
       <div className="p-6 max-w-4xl">
+        <OutdatedBanner outdated={t2.outdated} outdatedReason={t2.outdatedReason} entityType="task" entityId={taskId!} queryKeys={[['task', projectId!, taskId!], ['tasks', projectId!]]} />
         <div className="flex items-center gap-3 mb-6">
           <button onClick={() => navigate(-1)} className="text-gray-400 hover:text-gray-600"><ArrowLeft size={20} /></button>
           <div className="flex-1">
@@ -233,7 +246,7 @@ export default function TaskDetailPage() {
         </Section>
 
         <Section title="버전 이력">
-          <VersionSection projectId={projectId!} entityType="task" />
+          <VersionSection projectId={projectId!} entityType="task" entityQueryKey={['task', projectId!, taskId!]} />
         </Section>
       </div>
 

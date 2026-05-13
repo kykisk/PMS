@@ -5,12 +5,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Plus, Search, Pencil, Trash2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Sparkles } from 'lucide-react'
 import { featureApi, type FeaturePayload } from '@/api/feature.api'
 import { RequirementPickerModal } from '@/components/shared/RequirementPickerModal'
 import { aiStatusApi } from '@/api/admin.api'
 import { designApi } from '@/api/design.api'
-import { Pagination } from '@/components/shared/Pagination'
 import { AISuggestButton } from '@/components/shared/AISuggestButton'
 import { TableSkeleton } from '@/components/shared/Skeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -21,6 +20,8 @@ import { Modal } from '@/components/shared/Modal'
 import { Badge } from '@/components/shared/Badge'
 import AppLayout from '@/components/layout/AppLayout'
 import { TraceIndicator } from '@/components/shared/TraceIndicator'
+import { MultiFeatureGenerateModal } from '@/components/shared/MultiFeatureGenerateModal'
+import { RequirementFeatureUpdateModal } from '@/components/shared/RequirementFeatureUpdateModal'
 
 const schema = z.object({
   title: z.string().min(1),
@@ -31,6 +32,7 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 const STATUSES = ['new', 'review', 'confirmed', 'changed']
+const STATUS_LABELS: Record<string, string> = { new: '신규', review: '검토중', confirmed: '확정', changed: '변경' }
 
 export default function FeatureListPage() {
   const { t } = useTranslation()
@@ -41,12 +43,13 @@ export default function FeatureListPage() {
   const [filterStatus, setFilterStatus] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [editTarget, setEditTarget] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
   const [showReqPicker, setShowReqPicker] = useState(false)
   const [selectedReq, setSelectedReq] = useState<{ id: string; code: string; title: string } | null>(null)
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
   const [allExpanded, setAllExpanded] = useState(true)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [showMultiGen, setShowMultiGen] = useState(false)
+  const [updateTarget, setUpdateTarget] = useState<{ id: string; code: string; title: string; status: string } | null>(null)
 
   const toggleSelect = (id: string) => setSelected(prev => {
     const next = new Set(prev)
@@ -57,6 +60,14 @@ export default function FeatureListPage() {
   const toggleAllSelect = () => {
     setSelected(prev => prev.size === features.length ? new Set() : new Set(features.map(i => i.id)))
   }
+  const toggleGroupSelect = (ids: string[]) => {
+    setSelected(prev => {
+      const allSelected = ids.every(id => prev.has(id))
+      const next = new Set(prev)
+      ids.forEach(id => allSelected ? next.delete(id) : next.add(id))
+      return next
+    })
+  }
 
   const { data: aiStatus } = useQuery({
     queryKey: ['ai-status', projectId],
@@ -65,8 +76,8 @@ export default function FeatureListPage() {
   })
 
   const { data: result, isLoading } = useQuery({
-    queryKey: ['features', projectId, search, filterStatus, page],
-    queryFn: () => featureApi.list(projectId!, { search: search || undefined, status: filterStatus || undefined, page }),
+    queryKey: ['features', projectId, search, filterStatus],
+    queryFn: () => featureApi.list(projectId!, { search: search || undefined, status: filterStatus || undefined, limit: 2000 }),
     enabled: !!projectId,
   })
   const features = result?.data ?? []
@@ -89,7 +100,7 @@ export default function FeatureListPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<FeaturePayload> }) => featureApi.update(projectId!, id, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['features', projectId] }); setEditTarget(null); reset() },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['features', projectId] }); qc.invalidateQueries({ queryKey: ['features-confirmed', projectId] }); setEditTarget(null); reset() },
   })
 
   const deleteMutation = useMutation({
@@ -103,6 +114,18 @@ export default function FeatureListPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['features', projectId] })
+      setSelected(new Set())
+    },
+  })
+
+  const bulkStatusMutation = useMutation({
+    mutationFn: async ({ ids, status }: { ids: string[]; status: string }) => {
+      await Promise.all(ids.map(id => featureApi.update(projectId!, id, { status })))
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['features', projectId] })
+      qc.invalidateQueries({ queryKey: ['features-for-filter', projectId] })
+      qc.invalidateQueries({ queryKey: ['features-confirmed', projectId] })
       setSelected(new Set())
     },
   })
@@ -132,26 +155,42 @@ export default function FeatureListPage() {
       <div className="p-4">
         <div className="flex justify-between items-center mb-3">
           <h2 className="text-sm font-bold text-gray-800">{t('nav.features')}</h2>
-          <Button size="sm" className="h-7 text-xs px-2" onClick={() => { setEditTarget(null); reset({ status: 'new' }); setShowCreate(true) }}>
-            <Plus size={12} />
-            {t('common.create')}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => setShowMultiGen(true)} disabled={!aiStatus?.configured} disabledReason="관리자 페이지에서 LLM을 설정하세요">
+              <Sparkles size={12} />AI 기능생성
+            </Button>
+            <Button size="sm" className="h-7 text-xs px-2" onClick={() => { setEditTarget(null); reset({ status: 'new' }); setShowCreate(true) }}>
+              <Plus size={12} />
+              {t('common.create')}
+            </Button>
+          </div>
         </div>
 
         <div className="flex gap-2 mb-3">
           <div className="relative flex-1 max-w-xs">
             <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
-            <Input className="pl-7 h-7 text-xs" placeholder={t('common.search')} value={search} onChange={e => { setSearch(e.target.value); setPage(1); setSelected(new Set()) }} />
+            <Input className="pl-7 h-7 text-xs" placeholder={t('common.search')} value={search} onChange={e => { setSearch(e.target.value); setSelected(new Set()) }} />
           </div>
-          <select className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); setSelected(new Set()) }}>
+          <select className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setSelected(new Set()) }}>
             <option value="">상태 전체</option>
             {STATUSES.map(s => <option key={s} value={s}>{t(`status.${s}`)}</option>)}
           </select>
         </div>
 
         {selected.size > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-md mb-2">
-            <span className="text-xs text-red-600 font-medium">{selected.size}개 선택됨</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg mb-2">
+            <span className="text-xs text-blue-700 font-medium">{selected.size}개 선택됨</span>
+            <select className="h-7 text-xs border rounded px-2" defaultValue="" onChange={e => {
+              const status = e.target.value
+              if (!status) return
+              if (confirm(`선택한 ${selected.size}개를 "${STATUS_LABELS[status]}"으로 변경하시겠습니까?`)) {
+                bulkStatusMutation.mutate({ ids: [...selected], status })
+              }
+              e.target.value = ''
+            }}>
+              <option value="">상태변경...</option>
+              {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+            </select>
             <button
               onClick={() => { if (confirm(`선택한 ${selected.size}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate([...selected]) }}
               className="text-xs px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
@@ -173,10 +212,10 @@ export default function FeatureListPage() {
             <EmptyState message="기능이 없습니다. 새로 생성해보세요." />
           </div>
         ) : (() => {
-          const grouped: Record<string, { req: { code: string; title: string } | null; features: typeof features }> = {}
+          const grouped: Record<string, { req: { id: string; code: string; title: string; status: string } | null; features: typeof features }> = {}
           features.forEach(f => {
             const key = f.requirement?.id || '__none__'
-            if (!grouped[key]) grouped[key] = { req: f.requirement ? { code: f.requirement.code, title: f.requirement.title } : null, features: [] }
+            if (!grouped[key]) grouped[key] = { req: f.requirement ? { id: f.requirement.id, code: f.requirement.code, title: f.requirement.title, status: f.requirement.status } : null, features: [] }
             grouped[key].features.push(f)
           })
           const groups = Object.entries(grouped).sort(([a], [b]) => a === '__none__' ? 1 : b === '__none__' ? -1 : 0)
@@ -218,17 +257,38 @@ export default function FeatureListPage() {
               <tbody>
                 {groups.map(([key, group]) => (
                   <Fragment key={key}>
-                    <tr className="bg-gray-50/50 border-b cursor-pointer hover:bg-gray-100/50" onClick={() => toggleGroup(key)}>
-                      <td colSpan={7} className="px-3 py-1.5">
-                        <div className="flex items-center gap-2">
-                          {isExpanded(key) ? <ChevronDown size={12} className="text-gray-400" /> : <ChevronRight size={12} className="text-gray-400" />}
-                          <span className="text-xs font-medium text-[#5E6AD2]">
-                            {group.req ? `${group.req.code} - ${group.req.title.length > 30 ? group.req.title.slice(0, 30) + '...' : group.req.title}` : '미연결'}
-                          </span>
-                          <span className="text-[10px] text-gray-400 ml-1">({group.features.length})</span>
-                        </div>
-                      </td>
-                    </tr>
+                     <tr className="bg-gray-50/50 border-b cursor-pointer hover:bg-gray-100/50" onClick={() => toggleGroup(key)}>
+                       <td className="px-2 py-1.5 w-8" onClick={e => e.stopPropagation()}>
+                         <input type="checkbox"
+                           className="w-3.5 h-3.5"
+                           checked={group.features.length > 0 && group.features.every(f => selected.has(f.id))}
+                           ref={el => { if (el) el.indeterminate = group.features.some(f => selected.has(f.id)) && !group.features.every(f => selected.has(f.id)) }}
+                           onChange={() => toggleGroupSelect(group.features.map(f => f.id))}
+                         />
+                       </td>
+                       <td colSpan={6} className="px-3 py-1.5">
+                         <div className="flex items-center gap-2">
+                           {isExpanded(key) ? <ChevronDown size={12} className="text-gray-400" /> : <ChevronRight size={12} className="text-gray-400" />}
+                           <span className="text-xs font-medium text-[#5E6AD2]">
+                             {group.req ? `${group.req.code} - ${group.req.title.length > 30 ? group.req.title.slice(0, 30) + '...' : group.req.title}` : '미연결'}
+                           </span>
+                           <span className="text-[10px] text-gray-400 ml-1">({group.features.length})</span>
+                           {group.req && group.features.some(f => f.outdated) && (
+                             <>
+                               <span title="요구사항 변경으로 기능 업데이트 필요" className="text-amber-500 text-sm">⚠️</span>
+                               {['confirmed', 'changed'].includes(group.req.status) && (
+                                 <button
+                                   onClick={e => { e.stopPropagation(); setUpdateTarget(group.req) }}
+                                   className="ml-1 px-2 py-0.5 text-[10px] bg-amber-100 text-amber-700 rounded hover:bg-amber-200 transition-colors border border-amber-200"
+                                 >
+                                   AI 업데이트
+                                 </button>
+                               )}
+                             </>
+                           )}
+                         </div>
+                       </td>
+                     </tr>
                     {isExpanded(key) && group.features.map(f => (
                       <tr key={f.id} className="border-b hover:bg-gray-50 cursor-pointer transition-colors duration-200" onClick={() => navigate(`/projects/${projectId}/features/${f.id}`)}>
                         <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
@@ -240,7 +300,7 @@ export default function FeatureListPage() {
                         </td>
                         <td className="px-3 py-1.5 pl-8 font-mono text-xs text-gray-500">{f.code}</td>
                         <td className="px-3 py-1.5 font-medium">
-                          <span className="truncate block max-w-[200px]" title={f.title}>{f.title.length > 25 ? f.title.slice(0, 25) + '...' : f.title}</span>
+                          <span className="truncate block max-w-[200px]" title={f.title}>{f.title.length > 25 ? f.title.slice(0, 25) + '...' : f.title}{f.outdated && <span title={f.outdatedReason || '상위 변경됨'} className="text-amber-500 ml-1 text-[10px]">⚠️</span>}</span>
                         </td>
                         <td className="px-3 py-1.5 text-gray-500 text-xs">{f.tasks?.length ?? 0}</td>
                         <td className="px-3 py-1.5"><Badge value={f.status} label={t(`status.${f.status}`)} /></td>
@@ -271,7 +331,9 @@ export default function FeatureListPage() {
           </div>
           )
         })()}
-        <Pagination page={page} totalPages={result?.totalPages ?? 1} total={result?.total ?? 0} limit={50} onChange={setPage} />
+        <div className="py-3 text-center text-[11px] text-gray-400">
+          {features.length > 0 ? `총 ${features.length}개` : ''}
+        </div>
       </div>
 
       <Modal open={showCreate} onClose={() => { setShowCreate(false); setEditTarget(null); reset() }} title={editTarget ? '기능 수정' : '기능 생성'} className="max-w-lg">
@@ -328,6 +390,21 @@ export default function FeatureListPage() {
           setValue('reqId', req.id || '')
         }}
       />
+
+      <MultiFeatureGenerateModal
+        open={showMultiGen}
+        onClose={() => { setShowMultiGen(false); qc.invalidateQueries({ queryKey: ['features', projectId] }) }}
+        projectId={projectId!}
+      />
+
+      {updateTarget && (
+        <RequirementFeatureUpdateModal
+          open={!!updateTarget}
+          onClose={() => setUpdateTarget(null)}
+          projectId={projectId!}
+          requirement={updateTarget}
+        />
+      )}
     </AppLayout>
   )
 }

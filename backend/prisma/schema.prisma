@@ -55,7 +55,11 @@ model Project {
   requirements     Requirement[]
   features         Feature[]
   tasks            Task[]
+  taskDependencies TaskDependency[]
   testScenarios    TestScenario[]
+  testCycles       TestCycle[]
+  testPhases       TestPhase[]
+  defects          Defect[]
   traceLinks       TraceabilityLink[]
   versionSnapshots VersionSnapshot[]
   dbTables         DbTable[]
@@ -132,6 +136,8 @@ model Feature {
   screenDesign String?
   status       String   @default("new")
   createdAt    DateTime @default(now())
+  outdated     Boolean  @default(false)
+  outdatedReason String?
   updatedAt    DateTime @updatedAt
 
   project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -171,14 +177,33 @@ model Task {
   startDate   DateTime?
   endDate     DateTime?
   status      String    @default("pending")
+  outdated     Boolean  @default(false)
+  outdatedReason String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   feature  Feature     @relation(fields: [featureId], references: [id], onDelete: Cascade)
   project  Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   issues   TaskIssue[]
+  depsFrom TaskDependency[] @relation("DepFrom")
+  depsTo   TaskDependency[] @relation("DepTo")
 
   @@unique([projectId, code])
+}
+
+model TaskDependency {
+  id         String   @id @default(uuid())
+  projectId  String
+  fromTaskId String
+  toTaskId   String
+  type       String   @default("FS")
+  createdAt  DateTime @default(now())
+
+  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fromTask Task    @relation("DepFrom", fields: [fromTaskId], references: [id], onDelete: Cascade)
+  toTask   Task    @relation("DepTo", fields: [toTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([fromTaskId, toTaskId])
 }
 
 model TaskIssue {
@@ -198,18 +223,21 @@ model TaskIssue {
 // ─── Test ──────────────────────────────────────────────────────
 
 model TestScenario {
-  id          String   @id @default(uuid())
-  projectId   String
-  featureId   String?
-  reqId       String?
-  code        String
-  title       String
-  description String?
-  type        String   @default("integration")
-  testData    String?
-  status      String   @default("draft")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(uuid())
+  projectId      String
+  featureId      String?
+  reqId          String?
+  code           String
+  title          String
+  description    String?
+  type           String   @default("integration")  // unit | integration | system | acceptance
+  testType       String   @default("functional")   // functional | performance | security | usability | compatibility
+  testData       String?
+  status         String   @default("draft")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  outdated       Boolean  @default(false)
+  outdatedReason String?
 
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   feature     Feature?     @relation(fields: [featureId], references: [id])
@@ -217,6 +245,10 @@ model TestScenario {
   testCases   TestCase[]
 
   @@unique([projectId, code])
+  @@index([projectId, type])
+  @@index([projectId, testType])
+  @@index([projectId, featureId])
+  @@index([projectId, reqId])
 }
 
 model TestCase {
@@ -224,6 +256,7 @@ model TestCase {
   scenarioId String
   type       String    @default("integration")
   title      String
+  priority   String    @default("medium")  // high | medium | low
   steps      Json?
   testData   String?
   expected   String?
@@ -235,7 +268,74 @@ model TestCase {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  scenario TestScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  scenario   TestScenario  @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  executions TestExecution[]
+}
+
+// ─── TestCycle ─────────────────────────────────────────────────
+
+model TestCycle {
+  id          String    @id @default(uuid())
+  projectId   String
+  code        String
+  title       String
+  description String?
+  scope       String    @default("full")     // full | partial | regression
+  status      String    @default("planned")  // planned | in_progress | completed | cancelled
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  executions TestExecution[]
+
+  @@unique([projectId, code])
+}
+
+// ─── TestExecution ─────────────────────────────────────────────
+
+model TestExecution {
+  id          String   @id @default(uuid())
+  testCaseId  String
+  cycleId     String
+  result      String   // pass | fail | blocked | skipped
+  actual      String?
+  note        String?
+  executedBy  String?
+  executedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  testCase TestCase  @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  cycle    TestCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  defects  Defect[]
+
+  @@index([testCaseId, cycleId])
+}
+
+// ─── Defect ────────────────────────────────────────────────────
+
+model Defect {
+  id          String    @id @default(uuid())
+  projectId   String
+  code        String
+  title       String
+  description String?
+  severity    String    @default("major")   // critical | major | minor | trivial
+  priority    String    @default("medium")  // high | medium | low
+  status      String    @default("open")    // open | assigned | in_progress | resolved | verified | closed | reopened
+  assigneeId  String?
+  reportedBy  String?
+  executionId String?
+  resolution  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  execution TestExecution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, code])
 }
 
 // ─── Traceability ──────────────────────────────────────────────
@@ -418,4 +518,94 @@ model UserStory {
   updatedAt      DateTime @updatedAt
   project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   requirement    Requirement? @relation(fields: [requirementId], references: [id], onDelete: SetNull)
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  projectId   String
+  entityType  String
+  entityId    String
+  entityCode  String?
+  action      String
+  changes     Json?
+  userId      String?
+  userName    String?
+  createdAt   DateTime @default(now())
+
+  @@index([projectId, entityType, entityId])
+  @@index([projectId, createdAt])
+}
+
+model SpecDocument {
+  id          String   @id @default(uuid())
+  projectId   String
+  content     String
+  version     Int      @default(1)
+  uploadedAt  DateTime @default(now())
+
+  @@index([projectId])
+}
+
+// ─── Test Execution (테스트 수행) ──────────────────────────────
+
+model TestPhase {
+  id          String    @id @default(uuid())
+  projectId   String
+  code        String
+  title       String
+  description String?
+  status      String    @default("planned")
+  startDate   DateTime?
+  endDate     DateTime?
+  snapshotData Json?
+  snapshotAt  DateTime?
+  outdated    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  rounds  TestRound[]
+
+  @@unique([projectId, code])
+}
+
+model TestRound {
+  id            String    @id @default(uuid())
+  phaseId       String
+  roundNumber   Int
+  testerName    String
+  testerDept    String?
+  executedAt    DateTime?
+  scope         String    @default("full")
+  sourceRoundId String?
+  totalCases    Int       @default(0)
+  passCount     Int       @default(0)
+  failCount     Int       @default(0)
+  blockedCount  Int       @default(0)
+  naCount       Int       @default(0)
+  importedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  phase   TestPhase         @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  results TestRoundResult[]
+
+  @@index([phaseId, roundNumber])
+}
+
+model TestRoundResult {
+  id           String  @id @default(uuid())
+  roundId      String
+  scenarioCode String
+  caseTitle    String
+  caseIndex    Int
+  result       String?
+  actual       String?
+  stepResults  Json?
+  defectId     String?
+  createdAt    DateTime @default(now())
+
+  round TestRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+
+  @@index([roundId, scenarioCode, caseTitle])
 }

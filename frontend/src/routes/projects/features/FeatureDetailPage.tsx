@@ -17,6 +17,7 @@ import { Badge } from '@/components/shared/Badge'
 import { AncestorTags } from '@/components/shared/AncestorTags'
 import { VersionSection } from '@/components/shared/VersionSection'
 import { ScreenDesignSection } from '@/components/shared/ScreenDesignSection'
+import { OutdatedBanner } from '@/components/shared/OutdatedBanner'
 import AppLayout from '@/components/layout/AppLayout'
 
 const STATUSES = ['new', 'review', 'confirmed', 'changed']
@@ -77,7 +78,12 @@ export default function FeatureDetailPage() {
 
   const updateMutation = useMutation({
     mutationFn: (data: Partial<FeaturePayload>) => featureApi.update(projectId!, featureId!, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['feature', projectId, featureId] }); setEditing(false) },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['feature', projectId, featureId] })
+      qc.invalidateQueries({ queryKey: ['features', projectId] })
+      qc.invalidateQueries({ queryKey: ['features-confirmed', projectId] })
+      setEditing(false)
+    },
   })
 
   const { register, handleSubmit, reset } = useForm<FeaturePayload>()
@@ -94,6 +100,7 @@ export default function FeatureDetailPage() {
   return (
     <AppLayout>
       <div className="p-6 max-w-4xl">
+        <OutdatedBanner outdated={feature.outdated} outdatedReason={feature.outdatedReason} entityType="feature" entityId={featureId!} queryKeys={[['feature', projectId!, featureId!], ['features', projectId!]]} />
         <div className="flex items-center gap-3 mb-6">
           <button onClick={() => navigate(-1)} className="text-gray-400 hover:text-gray-600"><ArrowLeft size={20} /></button>
           <div className="flex-1">
@@ -268,7 +275,7 @@ export default function FeatureDetailPage() {
         </Section>
 
         <Section title="버전 이력">
-          <VersionSection projectId={projectId!} entityType="feature" />
+          <VersionSection projectId={projectId!} entityType="feature" entityQueryKey={['feature', projectId!, featureId!]} />
         </Section>
       </div>
 
@@ -296,15 +303,18 @@ export default function FeatureDetailPage() {
         endpoint="ai/generate-test-scenarios"
         payload={{ featureId }}
          onConfirm={async (items) => {
-          const { testApi } = await import('@/api/test.api')
-          for (const item of items) {
-            await testApi.createScenario(projectId!, {
-              title: String(item.title || ''),
-              description: item.description ? String(item.description) : undefined,
-              type: 'integration',
-              featureId: featureId!,
-            })
-          }
+           const { testApi } = await import('@/api/test.api')
+           for (const item of items) {
+             if (!item.title) continue
+             await testApi.createScenario(projectId!, {
+               title: String(item.title),
+               description: item.description ? String(item.description) : undefined,
+               type: item.type ? String(item.type) : 'integration',
+               testType: item.testType ? String(item.testType) : 'functional',
+               testData: item.testData ? (typeof item.testData === 'string' ? item.testData : JSON.stringify(item.testData)) : undefined,
+               featureId: featureId!,
+             })
+           }
           qc.invalidateQueries({ queryKey: ['feature', projectId, featureId] })
           qc.invalidateQueries({ queryKey: ['scenarios', projectId] })
         }}

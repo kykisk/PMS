@@ -126,4 +126,28 @@ export class TaskService {
   async removeIssue(issueId: string) {
     return this.prisma.taskIssue.delete({ where: { id: issueId } });
   }
+
+  async listDependencies(projectId: string) {
+    return this.prisma.taskDependency.findMany({
+      where: { projectId },
+      include: {
+        fromTask: { select: { id: true, code: true, title: true } },
+        toTask: { select: { id: true, code: true, title: true } },
+      },
+    });
+  }
+
+  async createDependency(projectId: string, fromTaskId: string, toTaskId: string, type: string) {
+    return this.prisma.taskDependency.create({
+      data: { projectId, fromTaskId, toTaskId, type },
+      include: {
+        fromTask: { select: { id: true, code: true, title: true } },
+        toTask: { select: { id: true, code: true, title: true } },
+      },
+    });
+  }
+
+  async removeDependency(id: string) {
+    return this.prisma.taskDependency.delete({ where: { id } });
+  }
 }

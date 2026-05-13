@@ -9,6 +9,8 @@ export interface Feature {
   description?: string
   screenDesign?: string
   status: string
+  outdated: boolean
+  outdatedReason?: string | null
   createdAt: string
   updatedAt: string
   requirement?: { id: string; code: string; title: string; status: string; priority?: string }
@@ -26,7 +28,7 @@ export interface FeaturePayload {
 import { type PaginatedResponse } from './requirement.api'
 
 export const featureApi = {
-  list: (projectId: string, query?: { reqId?: string; status?: string; search?: string; page?: number }) =>
+  list: (projectId: string, query?: { reqId?: string; status?: string; search?: string; page?: number; limit?: number; hasNoScenarios?: boolean; hasNoTasks?: boolean }) =>
     apiClient.get<PaginatedResponse<Feature>>(`/projects/${projectId}/features`, { params: query }).then(r => r.data),
   get: (projectId: string, featureId: string) =>
     apiClient.get<Feature>(`/projects/${projectId}/features/${featureId}`).then(r => r.data),

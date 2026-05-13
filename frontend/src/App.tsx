@@ -14,12 +14,17 @@ const TaskListPage = lazy(() => import('@/routes/projects/tasks/TaskListPage'))
 const TaskDetailPage = lazy(() => import('@/routes/projects/tasks/TaskDetailPage'))
 const TestListPage = lazy(() => import('@/routes/projects/tests/TestListPage'))
 const TestDetailPage = lazy(() => import('@/routes/projects/tests/TestDetailPage'))
+const DefectListPage = lazy(() => import('@/routes/projects/defects/DefectListPage'))
+const DefectDetailPage = lazy(() => import('@/routes/projects/defects/DefectDetailPage'))
 const RTMPage = lazy(() => import('@/routes/projects/traceability/RTMPage'))
 const DesignPage = lazy(() => import('@/routes/projects/design/DesignPage'))
 const ChangeRequestPage = lazy(() => import('@/routes/projects/change-requests/ChangeRequestPage'))
 const UseCasePage = lazy(() => import('./routes/projects/use-cases/UseCasePage'))
 const UserStoryPage = lazy(() => import('./routes/projects/user-stories/UserStoryPage'))
 const ProjectSettingsPage = lazy(() => import('./routes/projects/settings/SettingsPage'))
+const TestExecutionPage = lazy(() => import('./routes/projects/test-execution/TestExecutionPage'))
+const TestPhaseDetailPage = lazy(() => import('./routes/projects/test-execution/TestPhaseDetailPage'))
+const TestRoundDetailPage = lazy(() => import('./routes/projects/test-execution/TestRoundDetailPage'))
 const AdminPage = lazy(() => import('@/routes/admin/AdminPage'))
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -49,6 +54,11 @@ function App() {
           <Route path="/projects/:projectId/tasks/:taskId" element={<PrivateRoute><TaskDetailPage /></PrivateRoute>} />
           <Route path="/projects/:projectId/tests" element={<PrivateRoute><TestListPage /></PrivateRoute>} />
           <Route path="/projects/:projectId/tests/:scenarioId" element={<PrivateRoute><TestDetailPage /></PrivateRoute>} />
+          <Route path="/projects/:projectId/test-execution" element={<PrivateRoute><TestExecutionPage /></PrivateRoute>} />
+          <Route path="/projects/:projectId/test-execution/:phaseId" element={<PrivateRoute><TestPhaseDetailPage /></PrivateRoute>} />
+          <Route path="/projects/:projectId/test-execution/:phaseId/:roundId" element={<PrivateRoute><TestRoundDetailPage /></PrivateRoute>} />
+          <Route path="/projects/:projectId/defects" element={<PrivateRoute><DefectListPage /></PrivateRoute>} />
+          <Route path="/projects/:projectId/defects/:defectId" element={<PrivateRoute><DefectDetailPage /></PrivateRoute>} />
           <Route path="/projects/:projectId/traceability" element={<PrivateRoute><RTMPage /></PrivateRoute>} />
           <Route path="/projects/:projectId/design" element={<PrivateRoute><DesignPage /></PrivateRoute>} />
           <Route path="/projects/:projectId/use-cases" element={<PrivateRoute><UseCasePage /></PrivateRoute>} />

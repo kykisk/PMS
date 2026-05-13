@@ -1,25 +1,28 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param, Query,
-  UseGuards, UseInterceptors, UploadedFile, UploadedFiles,
+  UseGuards, UseInterceptors, UploadedFiles,
 } from '@nestjs/common';
-import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { FeatureService } from './feature.service';
 import { CreateFeatureDto } from './dto/create-feature.dto';
 import { UpdateFeatureDto } from './dto/update-feature.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { AuditService } from '../audit/audit.service';
 
 @ApiTags('Features')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('projects/:projectId/features')
 export class FeatureController {
-  constructor(private svc: FeatureService) {}
+  constructor(private svc: FeatureService, private auditService: AuditService) {}
 
   @Post()
   @ApiOperation({ summary: '기능 생성' })
-  create(@Param('projectId') pid: string, @Body() dto: CreateFeatureDto) {
-    return this.svc.create(pid, dto);
+  async create(@Param('projectId') pid: string, @Body() dto: CreateFeatureDto) {
+    const created = await this.svc.create(pid, dto);
+    await this.auditService.log({ projectId: pid, entityType: 'feature', entityId: created.id, entityCode: created.code, action: 'create', changes: dto });
+    return created;
   }
 
   @Get()
@@ -27,13 +30,27 @@ export class FeatureController {
   @ApiQuery({ name: 'reqId', required: false })
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'search', required: false })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'hasNoScenarios', required: false })
+  @ApiQuery({ name: 'hasNoTasks', required: false })
   findAll(
     @Param('projectId') pid: string,
     @Query('reqId') reqId?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('hasNoScenarios') hasNoScenarios?: string,
+    @Query('hasNoTasks') hasNoTasks?: string,
   ) {
-    return this.svc.findAll(pid, { reqId, status, search });
+    return this.svc.findAll(pid, {
+      reqId, status, search,
+      page: page ? +page : undefined,
+      limit: limit ? +limit : undefined,
+      hasNoScenarios: hasNoScenarios === 'true',
+      hasNoTasks: hasNoTasks === 'true',
+    });
   }
 
   @Get(':featureId')
@@ -44,14 +61,22 @@ export class FeatureController {
 
   @Put(':featureId')
   @ApiOperation({ summary: '기능 수정' })
-  update(@Param('projectId') pid: string, @Param('featureId') fid: string, @Body() dto: UpdateFeatureDto) {
-    return this.svc.update(pid, fid, dto);
+  async update(@Param('projectId') pid: string, @Param('featureId') fid: string, @Body() dto: UpdateFeatureDto) {
+    const updated = await this.svc.update(pid, fid, dto);
+    await this.auditService.log({ projectId: pid, entityType: 'feature', entityId: fid, entityCode: updated.code, action: 'update', changes: dto });
+    if (dto.status === 'confirmed') {
+      await this.auditService.log({ projectId: pid, entityType: 'feature', entityId: fid, entityCode: updated.code, action: 'update', changes: { status: 'confirmed', title: updated.title } });
+    }
+    await this.auditService.propagateOutdated(pid, 'feature', fid, updated.title);
+    return updated;
   }
 
   @Delete(':featureId')
   @ApiOperation({ summary: '기능 삭제' })
-  remove(@Param('projectId') pid: string, @Param('featureId') fid: string) {
-    return this.svc.remove(pid, fid);
+  async remove(@Param('projectId') pid: string, @Param('featureId') fid: string) {
+    const deleted = await this.svc.remove(pid, fid);
+    await this.auditService.log({ projectId: pid, entityType: 'feature', entityId: fid, entityCode: deleted.code, action: 'delete' });
+    return deleted;
   }
 
   @Post(':featureId/screen')

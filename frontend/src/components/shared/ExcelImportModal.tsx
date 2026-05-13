@@ -10,19 +10,21 @@ interface Props {
   onClose: () => void
   projectId: string
   queryKey: string[]
+  endpoint?: string
+  templateEndpoint?: string
 }
 
-export function ExcelImportModal({ open, onClose, projectId, queryKey }: Props) {
+export function ExcelImportModal({ open, onClose, projectId, queryKey, endpoint, templateEndpoint }: Props) {
   const qc = useQueryClient()
   const [file, setFile] = useState<File | null>(null)
-  const [result, setResult] = useState<{ created: number; skipped: number; errors: string[] } | null>(null)
+  const [result, setResult] = useState<{ created: number; updated?: number; skipped: number; errors: string[] } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const importMutation = useMutation({
     mutationFn: async (f: File) => {
       const form = new FormData()
       form.append('file', f)
-      const res = await apiClient.post(`/projects/${projectId}/requirements/import/excel`, form, {
+      const res = await apiClient.post(`/projects/${projectId}/${endpoint ?? 'requirements/import/excel'}`, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       return res.data
@@ -36,7 +38,7 @@ export function ExcelImportModal({ open, onClose, projectId, queryKey }: Props) 
   const downloadTemplate = async () => {
     const store = JSON.parse(localStorage.getItem('pms-auth') || '{}')
     const token = store?.state?.accessToken ?? ''
-    const res = await fetch(`/api/v1/projects/${projectId}/requirements/template/excel`, {
+    const res = await fetch(`/api/v1/projects/${projectId}/${templateEndpoint ?? 'requirements/template/excel'}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) return
@@ -94,8 +96,14 @@ export function ExcelImportModal({ open, onClose, projectId, queryKey }: Props) 
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-green-600">
               <CheckCircle size={18} />
-              <span className="font-medium">{result.created}건 생성 완료</span>
+              <span className="font-medium">{result.created}건 신규 생성</span>
             </div>
+            {(result.updated ?? 0) > 0 && (
+              <div className="flex items-center gap-2 text-blue-600">
+                <CheckCircle size={18} />
+                <span className="font-medium">{result.updated}건 업데이트</span>
+              </div>
+            )}
             {result.skipped > 0 && (
               <div className="flex items-center gap-2 text-yellow-600">
                 <AlertCircle size={18} />

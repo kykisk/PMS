@@ -10,9 +10,10 @@ import { Modal } from './Modal'
 interface Props {
   projectId: string
   entityType: string
+  entityQueryKey?: string[]
 }
 
-export function VersionSection({ projectId, entityType }: Props) {
+export function VersionSection({ projectId, entityType, entityQueryKey }: Props) {
   const qc = useQueryClient()
   const [showSave, setShowSave] = useState(false)
   const [diffModal, setDiffModal] = useState<{ v1: string; v2: string } | null>(null)
@@ -34,7 +35,10 @@ export function VersionSection({ projectId, entityType }: Props) {
 
   const restoreMutation = useMutation({
     mutationFn: (versionId: string) => versionApi.restore(projectId, entityType, versionId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['versions', projectId, entityType] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['versions', projectId, entityType] })
+      if (entityQueryKey) qc.invalidateQueries({ queryKey: entityQueryKey })
+    },
   })
 
   const { data: diffData } = useQuery({

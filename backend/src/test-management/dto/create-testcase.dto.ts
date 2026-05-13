@@ -6,21 +6,26 @@ export class CreateTestCaseDto {
   @IsString()
   title: string;
 
-  @ApiPropertyOptional({ enum: ['unit', 'integration'] })
+  @ApiPropertyOptional({ enum: ['unit', 'integration', 'system', 'acceptance'] })
   @IsOptional()
-  @IsIn(['unit', 'integration'])
+  @IsString()
   type?: string;
 
-  @ApiPropertyOptional({ description: '수행 절차 (JSON 배열)' })
+  @ApiPropertyOptional({ enum: ['high', 'medium', 'low'], default: 'medium' })
+  @IsOptional()
+  @IsIn(['high', 'medium', 'low'])
+  priority?: string;
+
+  @ApiPropertyOptional()
   @IsOptional()
   steps?: any;
 
-  @ApiPropertyOptional({ description: '테스트 데이터' })
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   testData?: string;
 
-  @ApiPropertyOptional({ description: '예상 결과' })
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   expected?: string;

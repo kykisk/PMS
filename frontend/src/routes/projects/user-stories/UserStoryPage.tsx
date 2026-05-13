@@ -1,7 +1,7 @@
 import { useState, Fragment } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, ChevronDown, ChevronRight, FileUp, Download } from 'lucide-react'
 import { userStoryApi } from '@/api/usecase.api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +12,8 @@ import AppLayout from '@/components/layout/AppLayout'
 import { TableSkeleton } from '@/components/shared/Skeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { TraceIndicator } from '@/components/shared/TraceIndicator'
+import { ExcelImportModal } from '@/components/shared/ExcelImportModal'
+import { exportApi } from '@/api/export.api'
 
 const PRIORITIES = ['high', 'medium', 'low']
 const STATUSES = ['new', 'review', 'confirmed', 'changed', 'deleted']
@@ -25,6 +27,7 @@ export default function UserStoryPage() {
   const [form, setForm] = useState({ title: '', asA: '', iWantTo: '', soThat: '', acceptanceCriteria: '', priority: 'medium', status: 'new', storyPoints: '' })
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [showImport, setShowImport] = useState(false)
 
   const toggleSelect = (id: string) => setSelected(prev => {
     const next = new Set(prev)
@@ -100,9 +103,17 @@ export default function UserStoryPage() {
       <div className="p-4">
         <div className="flex justify-between items-center mb-3">
           <h2 className="text-sm font-bold text-gray-800">User Story</h2>
-          <Button size="sm" className="h-7 text-xs px-2" onClick={openCreate}>
-            <Plus size={12} />생성
-          </Button>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => exportApi.userStories(projectId!)}>
+              <Download size={12} />엑셀 다운로드
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => setShowImport(true)}>
+              <FileUp size={12} />엑셀 Import
+            </Button>
+            <Button size="sm" className="h-7 text-xs px-2" onClick={openCreate}>
+              <Plus size={12} />생성
+            </Button>
+          </div>
         </div>
 
         <div className="flex gap-2 mb-3">
@@ -280,6 +291,15 @@ export default function UserStoryPage() {
           </div>
         </form>
       </Modal>
+
+      <ExcelImportModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        projectId={projectId!}
+        queryKey={['user-stories', projectId ?? '']}
+        endpoint="user-stories/import/excel"
+        templateEndpoint="user-stories/template/excel"
+      />
     </AppLayout>
   )
 }

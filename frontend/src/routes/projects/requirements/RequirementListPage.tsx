@@ -39,6 +39,7 @@ type FormData = z.infer<typeof schema>
 
 const PRIORITIES = ['high', 'medium', 'low']
 const STATUSES = ['new', 'review', 'confirmed', 'changed', 'deleted']
+const STATUS_LABELS: Record<string, string> = { new: '신규', review: '검토중', confirmed: '확정', changed: '변경', deleted: '삭제' }
 
 export default function RequirementListPage() {
   const { t } = useTranslation()
@@ -120,6 +121,21 @@ export default function RequirementListPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => requirementApi.remove(projectId!, id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['requirements', projectId] }),
+  })
+
+  const bulkStatusMutation = useMutation({
+    mutationFn: async ({ ids, status }: { ids: string[]; status: string }) => {
+      await Promise.all(ids.map(id => requirementApi.update(projectId!, id, { status })))
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['requirements', projectId] })
+      qc.invalidateQueries({ queryKey: ['requirements-all', projectId] })
+      qc.invalidateQueries({ queryKey: ['features', projectId] })
+      qc.invalidateQueries({ queryKey: ['features-for-filter', projectId] })
+      qc.invalidateQueries({ queryKey: ['tasks', projectId] })
+      qc.invalidateQueries({ queryKey: ['scenarios', projectId] })
+      setSelected(new Set())
+    },
   })
 
   const bulkDeleteMutation = useMutation({
@@ -236,16 +252,36 @@ export default function RequirementListPage() {
         </div>
 
         {selected.size > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-md mb-2">
-            <span className="text-xs text-red-600 font-medium">{selected.size}개 선택됨</span>
-            <button
-              onClick={() => { if (confirm(`선택한 ${selected.size}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate([...selected]) }}
-              className="text-xs px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
-            >선택 삭제</button>
-            <button
-              onClick={() => { if (confirm(`전체 ${requirements.length}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate(requirements.map(i => i.id)) }}
-              className="text-xs px-2 py-0.5 border border-red-400 text-red-600 rounded hover:bg-red-50"
-            >전체 삭제</button>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-md mb-2 flex-wrap">
+            <span className="text-xs text-blue-700 font-medium">{selected.size}개 선택됨</span>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-500">상태변경:</span>
+              <select
+                className="h-6 text-xs border rounded px-1.5 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]"
+                defaultValue=""
+                onChange={e => {
+                  if (!e.target.value) return
+                  const status = e.target.value
+                  if (confirm(`선택한 ${selected.size}개를 "${STATUS_LABELS[status]}"으로 변경하시겠습니까?`)) {
+                    bulkStatusMutation.mutate({ ids: [...selected], status })
+                  }
+                  e.target.value = ''
+                }}
+              >
+                <option value="">선택...</option>
+                <option value="new">신규</option>
+                <option value="review">검토중</option>
+                <option value="confirmed">확정</option>
+                <option value="changed">변경</option>
+                <option value="deleted">삭제</option>
+              </select>
+            </div>
+            <div className="flex gap-1">
+              <button
+                onClick={() => { if (confirm(`선택한 ${selected.size}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate([...selected]) }}
+                className="text-xs px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
+              >선택 삭제</button>
+            </div>
             <button onClick={() => setSelected(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">취소</button>
           </div>
         )}

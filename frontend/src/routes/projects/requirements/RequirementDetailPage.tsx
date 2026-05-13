@@ -54,7 +54,14 @@ export default function RequirementDetailPage() {
 
   const updateMutation = useMutation({
     mutationFn: (data: Partial<RequirementPayload>) => requirementApi.update(projectId!, reqId!, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['requirement', projectId, reqId] }); setEditing(false) },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['requirement', projectId, reqId] })
+      qc.invalidateQueries({ queryKey: ['requirements', projectId] })
+      qc.invalidateQueries({ queryKey: ['requirements-all', projectId] })
+      qc.invalidateQueries({ queryKey: ['features', projectId] })
+      qc.invalidateQueries({ queryKey: ['features-for-filter', projectId] })
+      setEditing(false)
+    },
   })
 
   const { data: linkedUCs = [] } = useQuery({
@@ -296,7 +303,7 @@ export default function RequirementDetailPage() {
         </Section>
 
         <Section title="버전 이력">
-          <VersionSection projectId={projectId!} entityType="requirement" />
+          <VersionSection projectId={projectId!} entityType="requirement" entityQueryKey={['requirement', projectId!, reqId!]} />
         </Section>
       </div>
 

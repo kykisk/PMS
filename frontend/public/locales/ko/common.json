@@ -9,6 +9,8 @@
     "features": "기능 리스트",
     "tasks": "Task",
     "tests": "테스트",
+    "testExecution": "테스트 수행",
+    "defects": "결함",
     "traceability": "추적성",
     "design": "설계",
     "useCases": "Use Case",

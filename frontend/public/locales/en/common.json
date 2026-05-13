@@ -9,6 +9,8 @@
     "features": "Features",
     "tasks": "Tasks",
     "tests": "Tests",
+    "testExecution": "Test Execution",
+    "defects": "Defects",
     "traceability": "Traceability",
     "design": "Design",
     "useCases": "Use Cases",

@@ -11,23 +11,33 @@ export class CreateScenarioDto {
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({ default: 'integration' })
+  @ApiPropertyOptional({ default: 'integration', enum: ['unit', 'integration', 'system', 'acceptance'] })
   @IsOptional()
   @IsString()
   type?: string;
+
+  @ApiPropertyOptional({ default: 'functional', enum: ['functional', 'performance', 'security', 'usability', 'compatibility'] })
+  @IsOptional()
+  @IsString()
+  testType?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   testData?: string;
 
-  @ApiPropertyOptional({ description: '연결 요구사항 ID' })
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   reqId?: string;
 
-  @ApiPropertyOptional({ description: '연결 기능 ID' })
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   featureId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  status?: string;
 }

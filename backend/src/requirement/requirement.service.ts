@@ -9,13 +9,27 @@ export class RequirementService {
   constructor(private prisma: PrismaService) {}
 
   private async nextCode(projectId: string): Promise<string> {
-    const count = await this.prisma.requirement.count({ where: { projectId } });
-    return `REQ-${String(count + 1).padStart(3, '0')}`;
+    const last = await this.prisma.requirement.findFirst({
+      where: { projectId },
+      orderBy: { code: 'desc' },
+      select: { code: true },
+    });
+    if (!last) return 'REQ-001';
+    const num = parseInt(last.code.replace('REQ-', ''), 10) || 0;
+    return `REQ-${String(num + 1).padStart(3, '0')}`;
   }
 
   async create(projectId: string, dto: CreateRequirementDto, source = 'manual') {
-    const code = await this.nextCode(projectId);
-    return this.prisma.requirement.create({ data: { projectId, code, source, ...dto } });
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = await this.nextCode(projectId);
+      try {
+        return await this.prisma.requirement.create({ data: { projectId, code, source, ...dto } });
+      } catch (e: any) {
+        if (e?.code === 'P2002' && attempt < 4) continue;
+        throw e;
+      }
+    }
+    throw new Error('코드 생성 실패');
   }
 
   async findAll(projectId: string, query: { status?: string; priority?: string; category?: string; search?: string; page?: number; limit?: number }) {
@@ -69,28 +83,37 @@ export class RequirementService {
     const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
     const priorityMap: Record<string, string> = { '높음': 'high', '중간': 'medium', '낮음': 'low' };
     const statusMap: Record<string, string> = { '신규': 'new', '검토중': 'review', '확정': 'confirmed', '변경': 'changed', '삭제': 'deleted' };
-    let created = 0; let skipped = 0; const errors: string[] = [];
+    let created = 0; let updated = 0; let skipped = 0; const errors: string[] = [];
 
     for (const [i, row] of rows.entries()) {
       const title = row['요구사항명'] || row['title'];
       if (!title) { errors.push(`Row ${i + 2}: 요구사항명 누락`); skipped++; continue; }
-      const code = await this.nextCode(projectId);
       const priority = row['우선순위'] || row['priority'] || 'medium';
       const status = row['상태'] || row['status'] || 'new';
-      await this.prisma.requirement.create({
-        data: {
-          projectId, code, source: 'excel',
-          title,
-          category: row['분류'] || row['category'] || undefined,
-          description: row['상세설명'] || row['description'] || undefined,
-          priority: priorityMap[priority] || priority,
-          status: statusMap[status] || status,
-          note: row['비고'] || row['note'] || undefined,
-        },
-      });
+      const data = {
+        title,
+        category: row['분류'] || row['category'] || undefined,
+        description: row['상세설명'] || row['description'] || undefined,
+        priority: priorityMap[priority] || priority,
+        status: statusMap[status] || status,
+        note: row['비고'] || row['note'] || undefined,
+      };
+
+      const rowCode = row['요구사항 ID'] || row['code'];
+      if (rowCode) {
+        const existing = await this.prisma.requirement.findFirst({ where: { projectId, code: String(rowCode) } });
+        if (existing) {
+          await this.prisma.requirement.update({ where: { id: existing.id }, data });
+          updated++;
+          continue;
+        }
+      }
+
+      const code = await this.nextCode(projectId);
+      await this.prisma.requirement.create({ data: { projectId, code, source: 'excel', ...data } });
       created++;
     }
-    return { created, skipped, errors };
+    return { created, updated, skipped, errors };
   }
 
   getExcelTemplate(): Buffer {

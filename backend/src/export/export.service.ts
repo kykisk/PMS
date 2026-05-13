@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -257,5 +257,194 @@ export class ExportService {
       ]),
     ];
     return this.buildExcel(data, 'API 명세', [8, 35, 25, 30, 20, 40, 40, 25]);
+  }
+
+  async useCasesExcel(projectId: string): Promise<Buffer> {
+    const items = await this.prisma.useCase.findMany({
+      where: { projectId },
+      orderBy: { code: 'asc' },
+    });
+    const data = [
+      ['코드', '제목', 'Actor', '설명', '사전조건', '사후조건', '우선순위', '상태'],
+      ...items.map(u => [u.code, u.title, u.actor ?? '', u.description ?? '', u.precondition ?? '', u.postcondition ?? '', u.priority, u.status]),
+    ];
+    return this.buildExcel(data, 'Use Case', [8, 30, 12, 40, 25, 25, 8, 8]);
+  }
+
+  async userStoriesExcel(projectId: string): Promise<Buffer> {
+    const items = await this.prisma.userStory.findMany({
+      where: { projectId },
+      orderBy: { code: 'asc' },
+    });
+    const data = [
+      ['코드', '제목', '역할(As a)', '원하는것(I want to)', '목적(So that)', '우선순위', '스토리포인트', '상태'],
+      ...items.map(u => [u.code, u.title, u.asA ?? '', u.iWantTo ?? '', u.soThat ?? '', u.priority, u.storyPoints ?? '', u.status]),
+    ];
+    return this.buildExcel(data, 'User Story', [8, 25, 12, 30, 30, 8, 10, 8]);
+  }
+
+  async testResultExcel(projectId: string, cycleId: string): Promise<Buffer> {
+    const cycle = await this.prisma.testCycle.findFirst({
+      where: { id: cycleId, projectId },
+      include: {
+        executions: {
+          include: {
+            testCase: {
+              include: {
+                scenario: { select: { code: true, title: true, type: true } }
+              }
+            }
+          }
+        }
+      }
+    });
+    if (!cycle) throw new NotFoundException('TestCycle not found');
+
+    const data = [
+      ['시나리오코드', '시나리오명', '케이스 제목', '결과', '실제 결과', '실행자', '실행일시'],
+      ...cycle.executions.map((exec: any) => [
+        exec.testCase.scenario?.code ?? '',
+        exec.testCase.scenario?.title ?? '',
+        exec.testCase.title,
+        exec.result,
+        exec.actual ?? '',
+        exec.executedBy ?? '',
+        exec.executedAt ? new Date(exec.executedAt).toLocaleString('ko-KR') : '',
+      ]),
+    ];
+    return this.buildExcel(data, '테스트 실행 결과', [14, 30, 30, 10, 30, 16, 20]);
+  }
+
+  async testResultPivotExcel(projectId: string): Promise<Buffer> {
+    const [scenarios, cycles] = await Promise.all([
+      this.prisma.testScenario.findMany({
+        where: { projectId },
+        include: {
+          testCases: { orderBy: { createdAt: 'asc' } },
+          feature: { select: { code: true, title: true } },
+        },
+        orderBy: { code: 'asc' },
+      }),
+      this.prisma.testCycle.findMany({
+        where: { projectId },
+        orderBy: { code: 'asc' },
+      }),
+    ]);
+
+    const executions = await this.prisma.testExecution.findMany({
+      where: { cycle: { projectId } },
+      select: { testCaseId: true, cycleId: true, result: true, actual: true, note: true },
+    });
+
+    const execMap = new Map<string, { result: string; actual: string; note: string }>();
+    executions.forEach(e => {
+      execMap.set(`${e.testCaseId}::${e.cycleId}`, {
+        result: e.result,
+        actual: e.actual ?? '',
+        note: e.note ?? '',
+      });
+    });
+
+    const cycleHeaders = cycles.flatMap(c => [`${c.code} 결과`, `${c.code} 비고`]);
+    const header = ['No', '시나리오ID', '시나리오명', '연결기능', '케이스명', '우선순위', '입력값', '기대결과', ...cycleHeaders];
+    const rows: any[][] = [];
+    const merges: { s: { r: number; c: number }; e: { r: number; c: number } }[] = [];
+
+    let rowIndex = 1;
+    let no = 1;
+
+    for (const scenario of scenarios) {
+      const featureLabel = scenario.feature ? `${scenario.feature.code} - ${scenario.feature.title}` : '';
+      const caseCount = scenario.testCases.length;
+
+      if (caseCount === 0) {
+        const cycleData = cycles.flatMap(c => {
+          const exec = execMap.get(`::${c.id}`);
+          return [exec?.result ?? '', exec?.actual ?? ''];
+        });
+        rows.push([no++, scenario.code, scenario.title, featureLabel, '(케이스 없음)', '', '', '', ...cycleData]);
+        rowIndex++;
+        continue;
+      }
+
+      const startRow = rowIndex;
+
+      scenario.testCases.forEach((tc, idx) => {
+        const cycleData = cycles.flatMap(c => {
+          const exec = execMap.get(`${tc.id}::${c.id}`);
+          return [exec?.result ?? '', exec?.actual ?? ''];
+        });
+        rows.push([
+          idx === 0 ? no : '',
+          idx === 0 ? scenario.code : '',
+          idx === 0 ? scenario.title : '',
+          idx === 0 ? featureLabel : '',
+          tc.title,
+          tc.priority ?? 'medium',
+          tc.testData ?? '',
+          tc.expected ?? '',
+          ...cycleData,
+        ]);
+        rowIndex++;
+      });
+
+      no++;
+
+      if (caseCount > 1) {
+        [0, 1, 2, 3].forEach(col => {
+          merges.push({ s: { r: startRow, c: col }, e: { r: rowIndex - 1, c: col } });
+        });
+      }
+    }
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+
+    const fixedWidths = [5, 10, 30, 22, 30, 8, 20, 25];
+    const cycleWidths = cycles.flatMap(() => [10, 20]);
+    ws['!cols'] = [...fixedWidths, ...cycleWidths].map(w => ({ wch: w }));
+    ws['!merges'] = merges;
+
+    XLSX.utils.book_append_sheet(wb, ws, '테스트결과서');
+
+    if (cycles.length > 0) {
+      const summaryRows: any[][] = [
+        ['회차', '전체', 'Pass', 'Fail', 'Blocked', 'Skip', '미수행', 'Pass율(%)'],
+      ];
+      for (const c of cycles) {
+        const cycleExecs = executions.filter(e => e.cycleId === c.id);
+        const totalCases = scenarios.reduce((s, sc) => s + sc.testCases.length, 0);
+        const pass = cycleExecs.filter(e => e.result === 'pass').length;
+        const fail = cycleExecs.filter(e => e.result === 'fail').length;
+        const blocked = cycleExecs.filter(e => e.result === 'blocked').length;
+        const skip = cycleExecs.filter(e => e.result === 'skipped').length;
+        const notExecuted = totalCases - cycleExecs.length;
+        const passRate = totalCases > 0 ? Math.round((pass / totalCases) * 100) : 0;
+        summaryRows.push([c.code, totalCases, pass, fail, blocked, skip, notExecuted, passRate]);
+      }
+      const ws2 = XLSX.utils.aoa_to_sheet(summaryRows);
+      ws2['!cols'] = [12, 8, 8, 8, 8, 8, 8, 10].map(w => ({ wch: w }));
+      XLSX.utils.book_append_sheet(wb, ws2, '회차별 집계');
+    }
+
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  }
+
+  async defectReportExcel(projectId: string): Promise<Buffer> {
+    const defects = await this.prisma.defect.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'asc' },
+    });
+    const data = [
+      ['코드', '제목', '심각도', '우선순위', '상태', '등록일', '해결일', '해결내용'],
+      ...defects.map((d: any) => [
+        d.code, d.title, d.severity, d.priority,
+        d.status,
+        new Date(d.createdAt).toLocaleString('ko-KR'),
+        d.resolvedAt ? new Date(d.resolvedAt).toLocaleString('ko-KR') : '',
+        d.resolution ?? '',
+      ]),
+    ];
+    return this.buildExcel(data, '결함 목록', [10, 40, 12, 12, 14, 20, 20, 40]);
   }
 }

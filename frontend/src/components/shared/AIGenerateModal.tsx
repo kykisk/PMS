@@ -7,6 +7,11 @@ import { AIProgressBar } from './AIProgressBar'
 import apiClient from '@/api/client'
 import { aiStatusApi } from '@/api/admin.api'
 
+const TEMPLATES = [
+  { label: '기술 스택 명시', value: '기술 스택: \n주요 제약사항: \n참고사항: ' },
+  { label: '비기능 요건', value: '성능 요건: \n보안 요건: \n호환성: ' },
+]
+
 interface GeneratedItem {
   title: string
   description?: string
@@ -32,11 +37,13 @@ export function AIGenerateModal({ open, onClose, title, projectId, endpoint, pay
   const [generated, setGenerated] = useState(false)
   const [rawText, setRawText] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
+  const [additionalInfo, setAdditionalInfo] = useState('')
+  const [showTemplate, setShowTemplate] = useState(false)
 
   const { data: aiStatus } = useQuery({ queryKey: ['ai-status', projectId], queryFn: () => aiStatusApi.check(projectId), enabled: !!projectId })
 
   const generateMutation = useMutation({
-    mutationFn: () => apiClient.post(`/projects/${projectId}/${endpoint}`, { ...payload, modelId: selectedModel || undefined }).then(r => r.data),
+    mutationFn: () => apiClient.post(`/projects/${projectId}/${endpoint}`, { ...payload, modelId: selectedModel || undefined, additionalInfo: additionalInfo || undefined }).then(r => r.data),
     onSuccess: (data: any) => {
       if (Array.isArray(data)) {
         if (data[0]?._parseError) {
@@ -67,6 +74,8 @@ export function AIGenerateModal({ open, onClose, title, projectId, endpoint, pay
     setItems([])
     setGenerated(false)
     setRawText('')
+    setAdditionalInfo('')
+    setShowTemplate(false)
     onClose()
   }
 
@@ -83,6 +92,36 @@ export function AIGenerateModal({ open, onClose, title, projectId, endpoint, pay
                 {aiStatus.models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
               </select>
             )}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-medium text-gray-600">추가 정보 <span className="text-gray-400 font-normal">(선택)</span></label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowTemplate(prev => !prev)}
+                    className="text-[10px] text-[#5E6AD2] hover:underline flex items-center gap-0.5"
+                  >📋 템플릿</button>
+                  {showTemplate && (
+                    <div className="absolute right-0 top-5 z-10 bg-white border border-gray-200 rounded-md shadow-lg py-1 min-w-[160px]">
+                      {TEMPLATES.map(t => (
+                        <button
+                          key={t.label}
+                          onClick={() => { setAdditionalInfo(t.value); setShowTemplate(false) }}
+                          className="block w-full text-left px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50"
+                        >{t.label}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <textarea
+                className="w-full border rounded-md px-2 py-1.5 text-xs text-gray-700 resize-none focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2] placeholder:text-gray-300"
+                rows={3}
+                placeholder="AI가 더 정확하게 생성할 수 있도록 추가 요건이나 제약 조건을 입력해 주세요."
+                value={additionalInfo}
+                onChange={e => setAdditionalInfo(e.target.value)}
+              />
+            </div>
             <AIProgressBar isActive={generateMutation.isPending} type="generate" />
             {!generateMutation.isPending && (
             <Button

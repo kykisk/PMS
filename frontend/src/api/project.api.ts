@@ -44,4 +44,14 @@ export const projectApi = {
     apiClient.put(`/projects/${projectId}/external-members/${eid}`, data).then(r => r.data),
   deleteExternalMember: (projectId: string, eid: string) =>
     apiClient.delete(`/projects/${projectId}/external-members/${eid}`).then(r => r.data),
+  getAuditHistory: (projectId: string, entityType?: string, entityId?: string) =>
+    apiClient.get(`/projects/${projectId}/audit/history`, { params: { entityType, entityId, limit: 30 } }).then(r => r.data),
+  clearOutdated: (projectId: string, entityType: string, entityId: string) =>
+    apiClient.post(`/projects/${projectId}/audit/clear-outdated`, { entityType, entityId }).then(r => r.data),
+  clearOutdatedByRequirement: (projectId: string, reqId: string) =>
+    apiClient.post(`/projects/${projectId}/audit/clear-outdated-by-requirement`, { reqId }).then(r => r.data),
+  clearOutdatedByFeature: (projectId: string, featureId: string) =>
+    apiClient.post(`/projects/${projectId}/audit/clear-outdated-by-feature`, { featureId }).then(r => r.data),
+  clearOutdatedScenariosByFeature: (projectId: string, featureId: string) =>
+    apiClient.post(`/projects/${projectId}/audit/clear-outdated-scenarios-by-feature`, { featureId }).then(r => r.data),
 }

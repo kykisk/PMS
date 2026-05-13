@@ -262,32 +262,6 @@ export default function DashboardPage() {
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-          {dashboard?.requirements && (
-            <StatCard title="요구사항" items={toItems(dashboard.requirements)} accent="blue" icon={<ClipboardList size={16} />} />
-          )}
-          {dashboard?.features && (
-            <StatCard title="기능 리스트" items={toItems(dashboard.features)} accent="purple" icon={<Layers size={16} />} />
-          )}
-          {dashboard?.tasks && (
-            <StatCard title="Task" items={toItems(dashboard.tasks)} accent="amber" icon={<CheckSquare size={16} />} />
-          )}
-          {dashboard?.tests && (
-            <StatCard title="테스트" items={toItems(dashboard.tests)} accent="green" icon={<TestTube2 size={16} />} />
-          )}
-          <div className="bg-white rounded-lg border border-l-4 border-l-indigo-400 p-3 card-elevated">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-6 h-6 rounded flex items-center justify-center bg-indigo-50 text-indigo-600"><Users size={14} /></div>
-              <h3 className="text-xs font-semibold text-gray-500">Use Case</h3>
-              <span className="ml-auto text-lg font-bold text-gray-800">{(useCases as any[]).length}</span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {(['draft','review','approved'] as const).map(s => {
-                const cnt = (useCases as any[]).filter(u => u.status === s).length
-                return cnt > 0 ? <div key={s} className="flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] bg-gray-50 border-gray-200"><span className="font-bold text-gray-600">{s === 'draft' ? '초안' : s === 'review' ? '검토' : '승인'}</span><span className="text-gray-400">{cnt}</span></div> : null
-              })}
-              {(useCases as any[]).length === 0 && <span className="text-[10px] text-gray-300">없음</span>}
-            </div>
-          </div>
           <div className="bg-white rounded-lg border border-l-4 border-l-pink-400 p-3 card-elevated">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-6 h-6 rounded flex items-center justify-center bg-pink-50 text-pink-600"><BookOpen size={14} /></div>
@@ -302,6 +276,32 @@ export default function DashboardPage() {
               {(userStories as any[]).length === 0 && <span className="text-[10px] text-gray-300">없음</span>}
             </div>
           </div>
+          <div className="bg-white rounded-lg border border-l-4 border-l-indigo-400 p-3 card-elevated">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-6 h-6 rounded flex items-center justify-center bg-indigo-50 text-indigo-600"><Users size={14} /></div>
+              <h3 className="text-xs font-semibold text-gray-500">Use Case</h3>
+              <span className="ml-auto text-lg font-bold text-gray-800">{(useCases as any[]).length}</span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {(['draft','review','approved'] as const).map(s => {
+                const cnt = (useCases as any[]).filter(u => u.status === s).length
+                return cnt > 0 ? <div key={s} className="flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] bg-gray-50 border-gray-200"><span className="font-bold text-gray-600">{s === 'draft' ? '초안' : s === 'review' ? '검토' : '승인'}</span><span className="text-gray-400">{cnt}</span></div> : null
+              })}
+              {(useCases as any[]).length === 0 && <span className="text-[10px] text-gray-300">없음</span>}
+            </div>
+          </div>
+          {dashboard?.requirements && (
+            <StatCard title="요구사항" items={toItems(dashboard.requirements)} accent="blue" icon={<ClipboardList size={16} />} />
+          )}
+          {dashboard?.features && (
+            <StatCard title="기능 리스트" items={toItems(dashboard.features)} accent="purple" icon={<Layers size={16} />} />
+          )}
+          {dashboard?.tasks && (
+            <StatCard title="Task" items={toItems(dashboard.tasks)} accent="amber" icon={<CheckSquare size={16} />} />
+          )}
+          {dashboard?.tests && (
+            <StatCard title="테스트" items={toItems(dashboard.tests)} accent="green" icon={<TestTube2 size={16} />} />
+          )}
         </div>
 
         {dashboard?.taskProgress && (

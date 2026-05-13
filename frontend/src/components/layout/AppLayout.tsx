@@ -7,7 +7,7 @@ import { authApi } from '@/api/auth.api'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, ClipboardList, Layers, CheckSquare,
-  TestTube2, GitMerge, PenTool, GitPullRequest, Settings, LogOut, Globe, Info, Pencil, Lock, ChevronLeft, Check, Bot, Trash2, Users, BookOpen, PanelLeftClose, PanelLeftOpen, Settings2,
+  TestTube2, GitMerge, PenTool, GitPullRequest, Settings, LogOut, Globe, Info, Pencil, Lock, ChevronLeft, Check, Bot, Trash2, Users, BookOpen, PanelLeftClose, PanelLeftOpen, Settings2, Bug, ClipboardCheck,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -21,6 +21,8 @@ const navItems = [
   { key: 'design', icon: PenTool, path: 'design' },
   { key: 'tasks', icon: CheckSquare, path: 'tasks' },
   { key: 'tests', icon: TestTube2, path: 'tests' },
+  { key: 'testExecution', icon: ClipboardCheck, path: 'test-execution' },
+  { key: 'defects', icon: Bug, path: 'defects' },
   { key: 'changeRequests', icon: GitPullRequest, path: 'change-requests' },
   { key: 'traceability', icon: GitMerge, path: 'traceability' },
 ]
@@ -216,7 +218,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </button>
 
             {showProfile && (
-              <div className="absolute left-2 right-2 bottom-full mb-1 bg-white border rounded-lg shadow-lg z-50">
+              <div className={`absolute bottom-full mb-1 bg-white border rounded-lg shadow-lg z-50 ${sidebarOpen ? "left-2 right-2" : "left-0 w-64"}`}>
 
                 {profileView === 'menu' && (
                   <div className="p-3">

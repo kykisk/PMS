@@ -6,6 +6,7 @@ import 'gantt-task-react/dist/index.css'
 interface Props {
   projectId: string
   tasks: any[]
+  dependencies?: { id: string; fromTaskId: string; toTaskId: string; type: string }[]
   projectStartDate?: string
   onDateChange?: (task: any, start: Date, end: Date) => void
   onProgressChange?: (task: any, progress: number) => void
@@ -13,9 +14,26 @@ interface Props {
   onDoubleClick?: (taskId: string) => void
 }
 
-const COLORS = ['#5E6AD2', '#7C3AED', '#059669', '#D97706', '#DC2626', '#0891B2', '#DB2777']
+const TASK_STYLE = {
+  backgroundColor: '#5E6AD2',
+  backgroundSelectedColor: '#4f5bb8',
+  progressColor: '#4f5bb8',
+}
 
-function convertToGanttTasks(tasks: any[], projectStartDate?: string): GanttTask[] {
+function buildGroupStyle(collapsed: boolean) {
+  return {
+    backgroundColor: collapsed ? '#374151' : '#1a1a2e',
+    backgroundSelectedColor: '#16213e',
+    progressColor: '#0f3460',
+  }
+}
+
+function convertToGanttTasks(
+  tasks: any[],
+  projectStartDate?: string,
+  dependencies?: { fromTaskId: string; toTaskId: string; type: string }[],
+  collapsedGroups?: Set<string>,
+): GanttTask[] {
   const grouped: Record<string, { feature: any; tasks: any[] }> = {}
   tasks.forEach(t => {
     const key = t.feature?.id || '__none__'
@@ -27,11 +45,10 @@ function convertToGanttTasks(tasks: any[], projectStartDate?: string): GanttTask
   const defaultEnd = new Date(defaultStart.getTime() + 86400000)
 
   const ganttTasks: GanttTask[] = []
-  let colorIdx = 0
 
   Object.entries(grouped).forEach(([key, group]) => {
-    const color = COLORS[colorIdx % COLORS.length]
-    colorIdx++
+    const groupId = `feature-${key}`
+    const collapsed = collapsedGroups?.has(groupId) ?? false
 
     const allGroupTasks = group.tasks.map((t: any) => ({
       start: t.startDate ? new Date(t.startDate) : defaultStart,
@@ -40,44 +57,70 @@ function convertToGanttTasks(tasks: any[], projectStartDate?: string): GanttTask
     const minStart = new Date(Math.min(...allGroupTasks.map(t => t.start.getTime())))
     const maxEnd = new Date(Math.max(...allGroupTasks.map(t => t.end.getTime())))
 
+    const baseName = group.feature
+      ? `${group.feature.code} - ${group.feature.title}`
+      : '미연결'
+
     ganttTasks.push({
       start: minStart,
       end: maxEnd,
-      name: group.feature ? `${group.feature.code} - ${group.feature.title}` : '미연결',
-      id: `feature-${key}`,
+      name: `${collapsed ? '▶' : '▼'} ${baseName}`,
+      id: groupId,
       type: 'project',
       progress: group.tasks.reduce((sum: number, t: any) => sum + (t.progress || 0), 0) / group.tasks.length,
       hideChildren: false,
-      styles: { backgroundColor: color, progressColor: color + '80' },
+      styles: buildGroupStyle(collapsed),
     })
 
-    group.tasks.forEach((t: any) => {
-      const start = t.startDate ? new Date(t.startDate) : defaultStart
-      const end = t.endDate ? new Date(t.endDate) : defaultEnd
-      ganttTasks.push({
-        start,
-        end,
-        name: t.title,
-        id: t.id,
-        type: 'task',
-        progress: t.progress || 0,
-        project: `feature-${key}`,
-        styles: { backgroundColor: color, progressColor: color + '60', backgroundSelectedColor: color },
+    if (!collapsed) {
+      group.tasks.forEach((t: any) => {
+        const start = t.startDate ? new Date(t.startDate) : defaultStart
+        const end = t.endDate ? new Date(t.endDate) : defaultEnd
+        const taskDeps = (dependencies ?? [])
+          .filter(d => d.toTaskId === t.id)
+          .map(d => d.fromTaskId)
+        ganttTasks.push({
+          start,
+          end,
+          name: t.title,
+          id: t.id,
+          type: 'task',
+          progress: t.progress || 0,
+          project: groupId,
+          dependencies: taskDeps.length > 0 ? taskDeps : undefined,
+          styles: TASK_STYLE,
+        })
       })
-    })
+    }
   })
 
   return ganttTasks
 }
 
-export function GanttView({ projectId: _projectId, tasks, projectStartDate, onDateChange, onProgressChange, onSelect, onDoubleClick }: Props) {
+export function GanttView({ projectId: _projectId, tasks, dependencies, projectStartDate, onDateChange, onProgressChange, onSelect, onDoubleClick }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Day)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
-  const ganttTasks = useMemo(() => convertToGanttTasks(tasks, projectStartDate), [tasks, projectStartDate])
+  const toggleGroup = (groupId: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(groupId)) next.delete(groupId)
+      else next.add(groupId)
+      return next
+    })
+  }
+
+  const ganttTasks = useMemo(
+    () => convertToGanttTasks(tasks, projectStartDate, dependencies, collapsedGroups),
+    [tasks, projectStartDate, dependencies, collapsedGroups],
+  )
 
   if (ganttTasks.length === 0) {
     return <div className="text-center py-12 text-gray-400 text-xs">Task가 없습니다</div>
   }
+
+  const allGroupIds = ganttTasks.filter(t => t.type === 'project').map(t => t.id)
+  const allCollapsed = allGroupIds.every(id => collapsedGroups.has(id))
 
   return (
     <div>
@@ -96,6 +139,16 @@ export function GanttView({ projectId: _projectId, tasks, projectStartDate, onDa
             {v.label}
           </button>
         ))}
+        <div className="ml-2 h-4 border-l border-gray-200" />
+        <button
+          onClick={() => {
+            if (allCollapsed) setCollapsedGroups(new Set())
+            else setCollapsedGroups(new Set(allGroupIds))
+          }}
+          className="px-2 py-0.5 text-xs rounded border border-gray-200 text-gray-500 hover:border-[#5E6AD2]/30 transition-colors"
+        >
+          {allCollapsed ? '전체 펼치기' : '전체 접기'}
+        </button>
       </div>
       <div className="border rounded-lg overflow-hidden bg-white">
         <Gantt
@@ -119,9 +172,13 @@ export function GanttView({ projectId: _projectId, tasks, projectStartDate, onDa
           onDoubleClick={onDoubleClick ? (task) => {
             if (task.type === 'task') onDoubleClick(task.id)
           } : undefined}
-          onClick={onSelect ? (task) => {
-            if (task.type === 'task') onSelect(task.id)
-          } : undefined}
+          onClick={(task) => {
+            if (task.type === 'project') {
+              toggleGroup(task.id)
+            } else if (task.type === 'task' && onSelect) {
+              onSelect(task.id)
+            }
+          }}
         />
       </div>
     </div>

@@ -9,18 +9,21 @@ import { RequirementService } from './requirement.service';
 import { CreateRequirementDto } from './dto/create-requirement.dto';
 import { UpdateRequirementDto } from './dto/update-requirement.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { AuditService } from '../audit/audit.service';
 
 @ApiTags('Requirements')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('projects/:projectId/requirements')
 export class RequirementController {
-  constructor(private svc: RequirementService) {}
+  constructor(private svc: RequirementService, private auditService: AuditService) {}
 
   @Post()
   @ApiOperation({ summary: '요구사항 수동 생성' })
-  create(@Param('projectId') pid: string, @Body() dto: CreateRequirementDto) {
-    return this.svc.create(pid, dto);
+  async create(@Param('projectId') pid: string, @Body() dto: CreateRequirementDto) {
+    const created = await this.svc.create(pid, dto);
+    await this.auditService.log({ projectId: pid, entityType: 'requirement', entityId: created.id, entityCode: created.code, action: 'create', changes: dto });
+    return created;
   }
 
   @Get()
@@ -68,13 +71,23 @@ export class RequirementController {
 
   @Put(':reqId')
   @ApiOperation({ summary: '요구사항 수정' })
-  update(@Param('projectId') pid: string, @Param('reqId') reqId: string, @Body() dto: UpdateRequirementDto) {
-    return this.svc.update(pid, reqId, dto);
+  async update(@Param('projectId') pid: string, @Param('reqId') reqId: string, @Body() dto: UpdateRequirementDto) {
+    const current = await this.svc.findOne(pid, reqId);
+    const updated = await this.svc.update(pid, reqId, dto);
+    if (dto.status === 'confirmed') {
+      await this.auditService.log({ projectId: pid, entityType: 'requirement', entityId: reqId, entityCode: updated.code, action: 'update', changes: { status: 'confirmed', title: updated.title } });
+    }
+    if (current.status === 'confirmed') {
+      await this.auditService.propagateOutdated(pid, 'requirement', reqId, updated.title);
+    }
+    return updated;
   }
 
   @Delete(':reqId')
   @ApiOperation({ summary: '요구사항 삭제' })
-  remove(@Param('projectId') pid: string, @Param('reqId') reqId: string) {
-    return this.svc.remove(pid, reqId);
+  async remove(@Param('projectId') pid: string, @Param('reqId') reqId: string) {
+    const deleted = await this.svc.remove(pid, reqId);
+    await this.auditService.log({ projectId: pid, entityType: 'requirement', entityId: reqId, entityCode: deleted.code, action: 'delete' });
+    return deleted;
   }
 }
