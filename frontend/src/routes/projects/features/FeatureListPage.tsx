@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -50,6 +50,12 @@ export default function FeatureListPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showMultiGen, setShowMultiGen] = useState(false)
   const [updateTarget, setUpdateTarget] = useState<{ id: string; code: string; title: string; status: string } | null>(null)
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [panelEditing, setPanelEditing] = useState(false)
+  const [panelEditForm, setPanelEditForm] = useState<any>({})
+  const [panelWidthPct, setPanelWidthPct] = useState(50)
+  const [isDragging, setIsDragging] = useState(false)
+  const panelContainerRef = useRef<HTMLDivElement>(null)
 
   const toggleSelect = (id: string) => setSelected(prev => {
     const next = new Set(prev)
@@ -92,6 +98,37 @@ export default function FeatureListPage() {
     queryFn: () => designApi.listApiSpecs(projectId!),
     enabled: !!projectId,
   })
+
+  const { data: selectedItem } = useQuery({
+    queryKey: ['feature', projectId, selectedItemId],
+    queryFn: () => featureApi.get(projectId!, selectedItemId!),
+    enabled: !!selectedItemId && !!projectId,
+  })
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setSelectedItemId(null); setPanelEditing(false); setPanelWidthPct(50) }
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [])
+
+  useEffect(() => {
+    if (!isDragging) return
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!panelContainerRef.current) return
+      const rect = panelContainerRef.current.getBoundingClientRect()
+      const newPct = ((rect.right - e.clientX) / rect.width) * 100
+      setPanelWidthPct(Math.max(20, Math.min(95, newPct)))
+    }
+    const handleMouseUp = () => setIsDragging(false)
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging])
 
   const createMutation = useMutation({
     mutationFn: (data: FeaturePayload) => featureApi.create(projectId!, data),
@@ -229,6 +266,8 @@ export default function FeatureListPage() {
           const isExpanded = (key: string) => expandedGroups[key] ?? allExpanded
 
           return (
+          <div ref={panelContainerRef} className="relative" style={{ userSelect: isDragging ? 'none' : 'auto' }}>
+          <div className="w-full">
           <div className="bg-white rounded-lg border overflow-hidden">
             <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 border-b">
               <span className="text-[11px] text-gray-500 font-medium">{groups.length}개 그룹 · {features.length}개 기능</span>
@@ -290,7 +329,7 @@ export default function FeatureListPage() {
                        </td>
                      </tr>
                     {isExpanded(key) && group.features.map(f => (
-                      <tr key={f.id} className="border-b hover:bg-gray-50 cursor-pointer transition-colors duration-200" onClick={() => navigate(`/projects/${projectId}/features/${f.id}`)}>
+                      <tr key={f.id} className={`border-b hover:bg-gray-50 cursor-pointer transition-colors duration-200 ${selectedItemId === f.id ? 'bg-[#5E6AD2]/5' : ''}`} onClick={() => setSelectedItemId(prev => prev === f.id ? null : f.id)}>
                         <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
                           <input type="checkbox"
                             checked={selected.has(f.id)}
@@ -328,6 +367,133 @@ export default function FeatureListPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+          </div>
+
+          {selectedItemId && selectedItem && (
+            <div
+              className="fixed right-0 top-0 bottom-0 z-50 bg-white border-l border-gray-200 shadow-2xl flex flex-col overflow-y-auto"
+              style={{ width: `${panelWidthPct}%`, minHeight: '400px' }}
+            >
+              <div
+                className={`absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-10 hover:bg-[#5E6AD2]/30 transition-colors ${isDragging ? 'bg-[#5E6AD2]/40' : ''}`}
+                onMouseDown={e => { e.preventDefault(); setIsDragging(true) }}
+              />
+              <div className="flex items-center justify-between px-4 py-2.5 border-b bg-gray-50 flex-shrink-0">
+                <span className="text-xs font-bold text-gray-800">기능 상세</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPanelWidthPct(50)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${Math.round(panelWidthPct) === 50 ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                      title="절반"
+                    >½</button>
+                    <button
+                      onClick={() => setPanelWidthPct(75)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${Math.round(panelWidthPct) === 75 ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                      title="3/4"
+                    >¾</button>
+                    <button
+                      onClick={() => setPanelWidthPct(95)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${panelWidthPct >= 90 ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                      title="전체"
+                    >⊡</button>
+                  </div>
+                  {!panelEditing ? (
+                    <button onClick={() => { setPanelEditForm({ title: selectedItem.title, description: selectedItem.description ?? '', status: selectedItem.status }); setPanelEditing(true) }}
+                      className="text-xs px-2 py-0.5 rounded border border-[#5E6AD2] text-[#5E6AD2] hover:bg-[#5E6AD2]/5">편집</button>
+                  ) : (
+                    <>
+                      <button onClick={async () => {
+                        await featureApi.update(projectId!, selectedItemId!, panelEditForm)
+                        qc.invalidateQueries({ queryKey: ['feature', projectId, selectedItemId] })
+                        qc.invalidateQueries({ queryKey: ['features', projectId] })
+                        setPanelEditing(false)
+                      }} className="text-xs px-2 py-0.5 rounded bg-[#5E6AD2] text-white hover:bg-[#4f5bb8]">저장</button>
+                      <button onClick={() => setPanelEditing(false)} className="text-xs px-2 py-0.5 rounded border border-gray-200 text-gray-500">취소</button>
+                    </>
+                  )}
+                  <button onClick={() => { setSelectedItemId(null); setPanelEditing(false); setPanelWidthPct(50) }} className="text-gray-400 hover:text-gray-600 ml-1">✕</button>
+                </div>
+              </div>
+
+              <div className="p-4 space-y-3 text-xs flex-1">
+                <div>
+                  <span className="text-gray-400 block mb-0.5">코드</span>
+                  <p className="font-mono text-[#5E6AD2]">{selectedItem.code}</p>
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">제목</span>
+                  {panelEditing
+                    ? <input className="w-full border rounded px-2 py-1 text-xs" value={panelEditForm.title} onChange={e => setPanelEditForm((f: any) => ({ ...f, title: e.target.value }))} />
+                    : <p className="font-medium text-gray-800">{selectedItem.title}</p>}
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">설명</span>
+                  {panelEditing
+                    ? <textarea className="w-full border rounded px-2 py-1 text-xs resize-none" rows={3} value={panelEditForm.description} onChange={e => setPanelEditForm((f: any) => ({ ...f, description: e.target.value }))} />
+                    : <p className="text-gray-600 whitespace-pre-wrap">{selectedItem.description || '-'}</p>}
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">상태</span>
+                  {panelEditing
+                    ? <select className="w-full border rounded px-2 py-1 text-xs" value={panelEditForm.status} onChange={e => setPanelEditForm((f: any) => ({ ...f, status: e.target.value }))}>
+                        <option value="new">신규</option><option value="review">검토중</option><option value="confirmed">확정</option><option value="changed">변경</option>
+                      </select>
+                    : <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${selectedItem.status === 'confirmed' ? 'bg-green-100 text-green-700' : selectedItem.status === 'new' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[selectedItem.status] || selectedItem.status}</span>}
+                </div>
+
+                {(selectedItem as any).requirement && (
+                  <div className="border-t pt-2">
+                    <span className="text-gray-500 font-medium block mb-1">연결 요구사항</span>
+                    <div className="flex items-center gap-2 text-[11px] py-0.5">
+                      <span className="font-mono text-gray-400">{(selectedItem as any).requirement.code}</span>
+                      <span className="text-gray-600 truncate">{(selectedItem as any).requirement.title}</span>
+                    </div>
+                  </div>
+                )}
+
+                {(selectedItem as any).tasks && (selectedItem as any).tasks.length > 0 && (
+                  <div className="border-t pt-2">
+                    <span className="text-gray-500 font-medium block mb-1">하위 Task ({(selectedItem as any).tasks.length})</span>
+                    <div className="space-y-1 max-h-[100px] overflow-y-auto">
+                      {(selectedItem as any).tasks.slice(0, 5).map((t: any) => (
+                        <div key={t.id} className="flex items-center gap-2 text-[11px] py-0.5">
+                          <span className="font-mono text-gray-400">{t.code}</span>
+                          <span className="text-gray-600 truncate">{t.title}</span>
+                        </div>
+                      ))}
+                      {(selectedItem as any).tasks.length > 5 && <p className="text-[10px] text-gray-400">외 {(selectedItem as any).tasks.length - 5}건...</p>}
+                    </div>
+                  </div>
+                )}
+
+                {(selectedItem as any).testScenarios && (selectedItem as any).testScenarios.length > 0 && (
+                  <div className="border-t pt-2">
+                    <span className="text-gray-500 font-medium block mb-1">테스트 시나리오 ({(selectedItem as any).testScenarios.length})</span>
+                    <div className="space-y-1 max-h-[100px] overflow-y-auto">
+                      {(selectedItem as any).testScenarios.slice(0, 5).map((s: any) => (
+                        <div key={s.id} className="flex items-center gap-2 text-[11px] py-0.5">
+                          <span className="font-mono text-gray-400">{s.code}</span>
+                          <span className="text-gray-600 truncate">{s.title}</span>
+                        </div>
+                      ))}
+                      {(selectedItem as any).testScenarios.length > 5 && <p className="text-[10px] text-gray-400">외 {(selectedItem as any).testScenarios.length - 5}건...</p>}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-4 pb-3 flex-shrink-0">
+                <button
+                  onClick={() => navigate(`/projects/${projectId}/features/${selectedItemId}`)}
+                  className="w-full text-center text-xs py-1.5 border border-[#5E6AD2] text-[#5E6AD2] rounded hover:bg-[#5E6AD2]/5 transition-colors"
+                >
+                  상세 페이지로 이동
+                </button>
+              </div>
+            </div>
+          )}
           </div>
           )
         })()}

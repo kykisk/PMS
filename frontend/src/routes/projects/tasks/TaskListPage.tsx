@@ -71,6 +71,12 @@ export default function TaskListPage() {
   const [depType, setDepType] = useState('FS')
   const [updateTarget, setUpdateTarget] = useState<{ id: string; code: string; title: string; status: string } | null>(null)
   const [showMultiGen, setShowMultiGen] = useState(false)
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [panelEditing, setPanelEditing] = useState(false)
+  const [panelEditForm, setPanelEditForm] = useState<any>({})
+  const [panelWidthPct, setPanelWidthPct] = useState(50)
+  const [isDragging, setIsDragging] = useState(false)
+  const panelContainerRef = useRef<HTMLDivElement>(null)
 
   const toggleSelect = (id: string) => setSelected(prev => {
     const next = new Set(prev)
@@ -135,6 +141,37 @@ export default function TaskListPage() {
     enabled: !!projectId && viewTab === 'gantt',
   })
   const allTasks = useMemo(() => allTasksResult?.data ?? [], [allTasksResult])
+
+  const { data: selectedItem } = useQuery({
+    queryKey: ['task', projectId, selectedItemId],
+    queryFn: () => taskApi.get(projectId!, selectedItemId!),
+    enabled: !!selectedItemId && !!projectId,
+  })
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setSelectedItemId(null); setPanelEditing(false); setPanelWidthPct(50) }
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [])
+
+  useEffect(() => {
+    if (!isDragging) return
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!panelContainerRef.current) return
+      const rect = panelContainerRef.current.getBoundingClientRect()
+      const newPct = ((rect.right - e.clientX) / rect.width) * 100
+      setPanelWidthPct(Math.max(20, Math.min(95, newPct)))
+    }
+    const handleMouseUp = () => setIsDragging(false)
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging])
 
   const { data: dependencies = [] } = useQuery({
     queryKey: ['task-deps', projectId],
@@ -289,6 +326,8 @@ export default function TaskListPage() {
           const toggleExpandAll = () => { setAllExpanded(v => !v); setExpandedGroups({}) }
 
           return (
+          <div ref={panelContainerRef} className="relative" style={{ userSelect: isDragging ? 'none' : 'auto' }}>
+          <div className="w-full">
           <div className="bg-white rounded-lg border overflow-hidden">
             <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 border-b">
               <span className="text-[11px] text-gray-500 font-medium">{groups.length}개 기능 · {tasks.length}개 Task</span>
@@ -356,7 +395,7 @@ export default function TaskListPage() {
                        </td>
                     </tr>
                     {isExpanded(key) && group.tasks.map(task => (
-                      <tr key={task.id} className="border-b hover:bg-gray-50 cursor-pointer transition-colors duration-200" onClick={() => navigate(`/projects/${projectId}/tasks/${task.id}`)}>
+                      <tr key={task.id} className={`border-b hover:bg-gray-50 cursor-pointer transition-colors duration-200 ${selectedItemId === task.id ? 'bg-[#5E6AD2]/5' : ''}`} onClick={() => setSelectedItemId(prev => prev === task.id ? null : task.id)}>
                         <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
                           <input type="checkbox"
                             checked={selected.has(task.id)}
@@ -404,6 +443,146 @@ export default function TaskListPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+          </div>
+
+          {selectedItemId && selectedItem && (
+            <div
+              className="fixed right-0 top-0 bottom-0 z-50 bg-white border-l border-gray-200 shadow-2xl flex flex-col overflow-y-auto"
+              style={{ width: `${panelWidthPct}%`, minHeight: '400px' }}
+            >
+              <div
+                className={`absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-10 hover:bg-[#5E6AD2]/30 transition-colors ${isDragging ? 'bg-[#5E6AD2]/40' : ''}`}
+                onMouseDown={e => { e.preventDefault(); setIsDragging(true) }}
+              />
+              <div className="flex items-center justify-between px-4 py-2.5 border-b bg-gray-50 flex-shrink-0">
+                <span className="text-xs font-bold text-gray-800">Task 상세</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPanelWidthPct(50)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${Math.round(panelWidthPct) === 50 ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                      title="절반"
+                    >½</button>
+                    <button
+                      onClick={() => setPanelWidthPct(75)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${Math.round(panelWidthPct) === 75 ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                      title="3/4"
+                    >¾</button>
+                    <button
+                      onClick={() => setPanelWidthPct(95)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${panelWidthPct >= 90 ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                      title="전체"
+                    >⊡</button>
+                  </div>
+                  {!panelEditing ? (
+                    <button onClick={() => { setPanelEditForm({ title: selectedItem.title, description: selectedItem.description ?? '', status: selectedItem.status, progress: selectedItem.progress ?? 0, startDate: selectedItem.startDate ? selectedItem.startDate.slice(0, 10) : '', endDate: selectedItem.endDate ? selectedItem.endDate.slice(0, 10) : '' }); setPanelEditing(true) }}
+                      className="text-xs px-2 py-0.5 rounded border border-[#5E6AD2] text-[#5E6AD2] hover:bg-[#5E6AD2]/5">편집</button>
+                  ) : (
+                    <>
+                      <button onClick={async () => {
+                        await taskApi.update(projectId!, selectedItemId!, {
+                          title: panelEditForm.title,
+                          description: panelEditForm.description || undefined,
+                          status: panelEditForm.status,
+                          progress: Number(panelEditForm.progress),
+                          startDate: panelEditForm.startDate ? new Date(panelEditForm.startDate).toISOString() : undefined,
+                          endDate: panelEditForm.endDate ? new Date(panelEditForm.endDate).toISOString() : undefined,
+                        })
+                        qc.invalidateQueries({ queryKey: ['task', projectId, selectedItemId] })
+                        qc.invalidateQueries({ queryKey: ['tasks', projectId] })
+                        setPanelEditing(false)
+                      }} className="text-xs px-2 py-0.5 rounded bg-[#5E6AD2] text-white hover:bg-[#4f5bb8]">저장</button>
+                      <button onClick={() => setPanelEditing(false)} className="text-xs px-2 py-0.5 rounded border border-gray-200 text-gray-500">취소</button>
+                    </>
+                  )}
+                  <button onClick={() => { setSelectedItemId(null); setPanelEditing(false); setPanelWidthPct(50) }} className="text-gray-400 hover:text-gray-600 ml-1">✕</button>
+                </div>
+              </div>
+
+              <div className="p-4 space-y-3 text-xs flex-1">
+                <div>
+                  <span className="text-gray-400 block mb-0.5">코드</span>
+                  <p className="font-mono text-[#5E6AD2]">{selectedItem.code}</p>
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">제목</span>
+                  {panelEditing
+                    ? <input className="w-full border rounded px-2 py-1 text-xs" value={panelEditForm.title} onChange={e => setPanelEditForm((f: any) => ({ ...f, title: e.target.value }))} />
+                    : <p className="font-medium text-gray-800">{selectedItem.title}</p>}
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">설명</span>
+                  {panelEditing
+                    ? <textarea className="w-full border rounded px-2 py-1 text-xs resize-none" rows={3} value={panelEditForm.description} onChange={e => setPanelEditForm((f: any) => ({ ...f, description: e.target.value }))} />
+                    : <p className="text-gray-600 whitespace-pre-wrap">{selectedItem.description || '-'}</p>}
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">상태</span>
+                  {panelEditing
+                    ? <select className="w-full border rounded px-2 py-1 text-xs" value={panelEditForm.status} onChange={e => setPanelEditForm((f: any) => ({ ...f, status: e.target.value }))}>
+                        <option value="pending">대기</option><option value="in_progress">진행중</option><option value="completed">완료</option><option value="on_hold">보류</option>
+                      </select>
+                    : <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${selectedItem.status === 'completed' ? 'bg-green-100 text-green-700' : selectedItem.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : selectedItem.status === 'on_hold' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[selectedItem.status] || selectedItem.status}</span>}
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">진척율</span>
+                  {panelEditing ? (
+                    <div className="flex items-center gap-2">
+                      <input type="range" min={0} max={100} step={5} className="flex-1 accent-[#5E6AD2]" value={panelEditForm.progress} onChange={e => setPanelEditForm((f: any) => ({ ...f, progress: Number(e.target.value) }))} />
+                      <span className="w-8 text-right font-medium text-gray-700">{panelEditForm.progress}%</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-[#5E6AD2] rounded-full" style={{ width: `${selectedItem.progress || 0}%` }} />
+                      </div>
+                      <span className="text-gray-700 font-medium">{selectedItem.progress || 0}%</span>
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">시작일</span>
+                    {panelEditing
+                      ? <input type="date" className="w-full border rounded px-2 py-1 text-xs" value={panelEditForm.startDate} onChange={e => setPanelEditForm((f: any) => ({ ...f, startDate: e.target.value }))} />
+                      : <p className="text-gray-700">{selectedItem.startDate ? new Date(selectedItem.startDate).toLocaleDateString('ko-KR') : '-'}</p>}
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">종료일</span>
+                    {panelEditing
+                      ? <input type="date" className="w-full border rounded px-2 py-1 text-xs" value={panelEditForm.endDate} onChange={e => setPanelEditForm((f: any) => ({ ...f, endDate: e.target.value }))} />
+                      : <p className="text-gray-700">{selectedItem.endDate ? new Date(selectedItem.endDate).toLocaleDateString('ko-KR') : '-'}</p>}
+                  </div>
+                </div>
+
+                {(selectedItem as any).feature && (
+                  <div className="border-t pt-2">
+                    <span className="text-gray-500 font-medium block mb-1">연결 기능</span>
+                    <div className="flex items-center gap-2 text-[11px] py-0.5">
+                      <span className="font-mono text-gray-400">{(selectedItem as any).feature.code}</span>
+                      <span className="text-gray-600 truncate">{(selectedItem as any).feature.title}</span>
+                    </div>
+                  </div>
+                )}
+
+                {(selectedItem as any)._count?.issues > 0 && (
+                  <div className="border-t pt-2">
+                    <span className="text-gray-500 font-medium block mb-1">이슈 ({(selectedItem as any)._count.issues}건)</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-4 pb-3 flex-shrink-0">
+                <button
+                  onClick={() => navigate(`/projects/${projectId}/tasks/${selectedItemId}`)}
+                  className="w-full text-center text-xs py-1.5 border border-[#5E6AD2] text-[#5E6AD2] rounded hover:bg-[#5E6AD2]/5 transition-colors"
+                >
+                  상세 페이지로 이동
+                </button>
+              </div>
+            </div>
+          )}
           </div>
           )
         })()}

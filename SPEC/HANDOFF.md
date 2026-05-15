@@ -1,4 +1,79 @@
-# PMS 구현 Handoff — 세션 2 작업 내역
+# PMS 구현 Handoff — 세션 3 추가 작업 내역
+
+## 이전 HANDOFF (세션 2) 내용은 유지되며, 아래는 세션 3 추가사항
+
+---
+
+## 세션 3 주요 변경사항
+
+### 1. 테스트 구조 최종 확정
+- **레벨(unit/integration/system/acceptance) 완전 제거** — TestScenario.type에서 삭제
+- **테스트 상위 = 요구사항** (기능리스트 기반 → 요구사항 기반)
+- **AI 시나리오 생성도 요구사항 기반** (기능 상세에서 제거, 요구사항 상세로 이동)
+- **테스트 수행 TestPhase에 phaseType** 추가 (integration/system/acceptance)
+- 메뉴명: "테스트" → "테스트 시나리오"
+- 기능리스트별 그룹핑 토글 제거 (요구사항별 고정)
+- 수동 시나리오 생성 폼: 기능 연결 필드 제거
+
+### 2. AI 시나리오 상세도 조절 기능
+- 슬라이더 1~20개 + 프리셋 버튼 (간략/보통/상세)
+- MultiScenarioGenerateModal + 요구사항 상세 AIGenerateModal에 적용
+- BE: `generateTestScenarios`에 `detailLevel` 파라미터 추가
+
+### 3. 사이드 패널 UX (4개 목록 페이지)
+- 요구사항/기능리스트/Task/테스트 시나리오 목록에서 행 클릭 → 우측 사이드 패널
+- **오버레이 방식**: 테이블을 shrink하지 않고 위에 덮음
+- **position: fixed** (스크롤 위치 무관, 뷰포트 기준)
+- 너비: 기본 50%, ½/¾/⊡ 프리셋 + 좌측 엣지 드래그 리사이즈 (20~95%)
+- 인라인 편집 지원
+- "상세 페이지로 이동" 버튼으로 기존 DetailPage 유지
+- Escape 키 닫기
+
+### 4. AI 다중 생성 모달 레이아웃 개편
+- `max-w-4xl` 좌우 2패널 구조
+- Step 1: 왼쪽(55%)=선택목록+검색, 오른쪽=설정(상세도/모델/추가정보)
+- Step 3: 왼쪽=결과목록, 오른쪽=선택통계+버튼
+- 결과 뷰 그룹 헤더 `z-10` (겹침 방지)
+- `h-[520px]` 고정 → `flex-1 min-h-0` (모달 높이에 맞게 동적)
+
+### 5. BE 신규 엔드포인트
+- `POST ai/generate-test-scenarios-multi-for-requirements` — 요구사항 기반 다중 시나리오
+- `POST ai/generate-test-scenarios-by-level-for-requirements` — 요구사항 기반 레벨별
+- TestPhase에 `phaseType` 필드 추가 (DB push 완료)
+
+---
+
+## 현재 상태
+
+### 완료된 것
+- 테스트 구조 개편 (요구사항 기반, 레벨 제거)
+- 4개 목록 페이지 사이드 패널 (fixed 오버레이 + 드래그 리사이즈)
+- AI 다중 생성 모달 2패널 레이아웃
+- AI 시나리오 상세도 조절 슬라이더
+
+### 미완성 / 다음 작업 후보
+- 테스트 수행 TestPhase 생성 시 phaseType 선택 UI 반영 필요
+- Use Case, User Story, 변경요청 등 다른 목록도 사이드 패널 적용 가능
+- 사이드 패널에서 하위 항목 생성 기능 (현재는 조회/편집만)
+
+---
+
+## 실행 방법
+```bash
+# 빠른 재시작 (빌드 없이)
+pkill -f "node dist/src/main" 2>/dev/null
+fuser -k 3000/tcp 2>/dev/null
+sleep 2
+cd /home/ec2-user/workspace/PMS/backend
+DATABASE_URL="postgresql://pms_user:pms_password@localhost:5432/pms_db" JWT_SECRET="pms-jwt-secret-change-in-production" JWT_EXPIRES_IN="7d" PORT=3000 node dist/src/main.js &
+
+pkill -f "vite" 2>/dev/null; sleep 1
+cd /home/ec2-user/workspace/PMS/frontend && npx vite preview &
+```
+
+## 계정
+- admin@pms.com / Admin1234!
+- AI 모델: us.anthropic.claude-opus-4-6-v1 (Bedrock)
 
 ## 이전 세션 대비 변경사항 요약
 

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
@@ -57,7 +57,12 @@ export default function RequirementListPage() {
   const [editTarget, setEditTarget] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Set<string>>(new Set())
-
+  const [selectedReqId, setSelectedReqId] = useState<string | null>(null)
+  const [panelEditing, setPanelEditing] = useState(false)
+  const [panelEditForm, setPanelEditForm] = useState<any>({})
+  const [panelWidthPct, setPanelWidthPct] = useState(50)
+  const [isDragging, setIsDragging] = useState(false)
+  const panelContainerRef = useRef<HTMLDivElement>(null)
   const toggleSelect = (id: string) => setSelected(prev => {
     const next = new Set(prev)
     if (next.has(id)) next.delete(id)
@@ -85,6 +90,37 @@ export default function RequirementListPage() {
     enabled: !!projectId,
   })
   const requirements = result?.data ?? []
+
+  const { data: selectedReq } = useQuery({
+    queryKey: ['requirement', projectId, selectedReqId],
+    queryFn: () => requirementApi.get(projectId!, selectedReqId!),
+    enabled: !!selectedReqId && !!projectId,
+  })
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setSelectedReqId(null); setPanelEditing(false); setPanelWidthPct(50) }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  useEffect(() => {
+    if (!isDragging) return
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!panelContainerRef.current) return
+      const rect = panelContainerRef.current.getBoundingClientRect()
+      const newPct = ((rect.right - e.clientX) / rect.width) * 100
+      setPanelWidthPct(Math.max(20, Math.min(95, newPct)))
+    }
+    const handleMouseUp = () => setIsDragging(false)
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging])
 
   const { data: allUCs = [] } = useQuery({
     queryKey: ['use-cases', projectId],
@@ -295,87 +331,220 @@ export default function RequirementListPage() {
             <EmptyState message="요구사항이 없습니다. 새로 생성해보세요." />
           </div>
         ) : (
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="w-8 px-2 py-1.5">
-                  <input type="checkbox"
-                    checked={requirements.length > 0 && selected.size === requirements.length}
-                    onChange={toggleAll}
-                    className="w-3.5 h-3.5"
-                  />
-                </th>
-                <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">ID</th>
-                <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">분류</th>
-                <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px]">요구사항명</th>
-                <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">우선순위</th>
-                <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">상태</th>
-                <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-20">입력경로</th>
-                <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-20">연결</th>
-                <th className="w-20 px-3 py-1.5"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {requirements.map(req => (
-                  <tr
-                    key={req.id}
-                    className="border-b hover:bg-gray-50 cursor-pointer transition-colors duration-200"
-                    onClick={() => navigate(`/projects/${projectId}/requirements/${req.id}`)}
-                  >
-                    <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
+        <div ref={panelContainerRef} className="relative" style={{ userSelect: isDragging ? 'none' : 'auto' }}>
+          <div className="w-full">
+            <div className="bg-white rounded-lg border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="w-8 px-2 py-1.5">
                       <input type="checkbox"
-                        checked={selected.has(req.id)}
-                        onChange={() => toggleSelect(req.id)}
+                        checked={requirements.length > 0 && selected.size === requirements.length}
+                        onChange={toggleAll}
                         className="w-3.5 h-3.5"
                       />
-                    </td>
-                    <td className="px-3 py-1.5 font-mono text-xs text-gray-500">{req.code}</td>
-                    <td className="px-3 py-1.5 text-gray-600"><span className="truncate block max-w-[100px]" title={req.category ?? ''}>{(req.category ?? '-').length > 8 ? (req.category ?? '').slice(0, 8) + '...' : req.category ?? '-'}</span></td>
-                    <td className="px-3 py-1.5 font-medium"><span className="truncate block max-w-[200px]" title={req.title}>{req.title.length > 20 ? req.title.slice(0, 20) + '...' : req.title}</span></td>
-                    <td className="px-3 py-1.5"><Badge value={req.priority} label={t(`priority.${req.priority}`)} /></td>
-                    <td className="px-3 py-1.5"><Badge value={req.status} label={t(`status.${req.status}`)} /></td>
-                    <td className="px-3 py-1.5 text-xs text-gray-400">{req.source}</td>
-                    <td className="px-3 py-1.5">
-                      <TraceIndicator
-                        upper={[
-                          { count: (allUCs as any[]).filter(u => u.requirementId === req.id).length, label: 'UC', colorClass: 'bg-indigo-100 text-indigo-600' },
-                          { count: (allUSs as any[]).filter(u => u.requirementId === req.id).length, label: 'US', colorClass: 'bg-pink-100 text-pink-600' },
-                        ]}
-                        lower={[
-                          { count: (req as any).features?.length ?? 0, label: '기능', colorClass: 'bg-purple-100 text-purple-600' },
-                          { count: (() => {
-                            const fIds = ((req as any).features ?? []).map((f: any) => f.id)
-                            return (allDbTables as any[]).filter(d => fIds.includes(d.featureId)).length
-                          })(), label: 'DB', colorClass: 'bg-green-100 text-green-700' },
-                          { count: (() => {
-                            const fIds = ((req as any).features ?? []).map((f: any) => f.id)
-                            return (allApiSpecs as any[]).filter(a => fIds.includes(a.featureId)).length
-                          })(), label: 'API', colorClass: 'bg-cyan-100 text-cyan-700' },
-                        ]}
-                      />
-                    </td>
-                    <td className="px-3 py-1.5" onClick={e => e.stopPropagation()}>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => { openEdit(req); setShowCreate(true) }}
-                          className="p-1 text-gray-400 hover:text-blue-600"
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          onClick={() => { if (confirm('삭제하시겠습니까?')) deleteMutation.mutate(req.id) }}
-                          className="p-1 text-gray-400 hover:text-red-600"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
+                    </th>
+                    <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">ID</th>
+                    <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">분류</th>
+                    <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px]">요구사항명</th>
+                    <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">우선순위</th>
+                    <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">상태</th>
+                    <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-20">입력경로</th>
+                    <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-20">연결</th>
+                    <th className="w-20 px-3 py-1.5"></th>
                   </tr>
-                ))
-              }
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {requirements.map(req => (
+                      <tr
+                        key={req.id}
+                        className={`border-b hover:bg-gray-50 cursor-pointer transition-colors duration-200 ${selectedReqId === req.id ? 'bg-[#5E6AD2]/5' : ''}`}
+                        onClick={() => setSelectedReqId(prev => prev === req.id ? null : req.id)}
+                      >
+                        <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
+                          <input type="checkbox"
+                            checked={selected.has(req.id)}
+                            onChange={() => toggleSelect(req.id)}
+                            className="w-3.5 h-3.5"
+                          />
+                        </td>
+                        <td className="px-3 py-1.5 font-mono text-xs text-gray-500">{req.code}</td>
+                        <td className="px-3 py-1.5 text-gray-600"><span className="truncate block max-w-[100px]" title={req.category ?? ''}>{(req.category ?? '-').length > 8 ? (req.category ?? '').slice(0, 8) + '...' : req.category ?? '-'}</span></td>
+                        <td className="px-3 py-1.5 font-medium"><span className="truncate block max-w-[200px]" title={req.title}>{req.title.length > 20 ? req.title.slice(0, 20) + '...' : req.title}</span></td>
+                        <td className="px-3 py-1.5"><Badge value={req.priority} label={t(`priority.${req.priority}`)} /></td>
+                        <td className="px-3 py-1.5"><Badge value={req.status} label={t(`status.${req.status}`)} /></td>
+                        <td className="px-3 py-1.5 text-xs text-gray-400">{req.source}</td>
+                        <td className="px-3 py-1.5">
+                          <TraceIndicator
+                            upper={[
+                              { count: (allUCs as any[]).filter(u => u.requirementId === req.id).length, label: 'UC', colorClass: 'bg-indigo-100 text-indigo-600' },
+                              { count: (allUSs as any[]).filter(u => u.requirementId === req.id).length, label: 'US', colorClass: 'bg-pink-100 text-pink-600' },
+                            ]}
+                            lower={[
+                              { count: (req as any).features?.length ?? 0, label: '기능', colorClass: 'bg-purple-100 text-purple-600' },
+                              { count: (() => {
+                                const fIds = ((req as any).features ?? []).map((f: any) => f.id)
+                                return (allDbTables as any[]).filter(d => fIds.includes(d.featureId)).length
+                              })(), label: 'DB', colorClass: 'bg-green-100 text-green-700' },
+                              { count: (() => {
+                                const fIds = ((req as any).features ?? []).map((f: any) => f.id)
+                                return (allApiSpecs as any[]).filter(a => fIds.includes(a.featureId)).length
+                              })(), label: 'API', colorClass: 'bg-cyan-100 text-cyan-700' },
+                            ]}
+                          />
+                        </td>
+                        <td className="px-3 py-1.5" onClick={e => e.stopPropagation()}>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => { openEdit(req); setShowCreate(true) }}
+                              className="p-1 text-gray-400 hover:text-blue-600"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              onClick={() => { if (confirm('삭제하시겠습니까?')) deleteMutation.mutate(req.id) }}
+                              className="p-1 text-gray-400 hover:text-red-600"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {selectedReqId && selectedReq && (
+            <div
+              className="fixed right-0 top-0 bottom-0 z-50 bg-white border-l border-gray-200 shadow-2xl flex flex-col overflow-y-auto"
+              style={{ width: `${panelWidthPct}%`, minHeight: '400px' }}
+            >
+              <div
+                className={`absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-10 hover:bg-[#5E6AD2]/30 transition-colors ${isDragging ? 'bg-[#5E6AD2]/40' : ''}`}
+                onMouseDown={e => { e.preventDefault(); setIsDragging(true) }}
+              />
+              <div className="flex items-center justify-between px-4 py-2.5 border-b bg-gray-50 flex-shrink-0">
+                <span className="text-xs font-bold text-gray-800">요구사항 상세</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPanelWidthPct(50)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${Math.round(panelWidthPct) === 50 ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                      title="절반"
+                    >½</button>
+                    <button
+                      onClick={() => setPanelWidthPct(75)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${Math.round(panelWidthPct) === 75 ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                      title="3/4"
+                    >¾</button>
+                    <button
+                      onClick={() => setPanelWidthPct(95)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${panelWidthPct >= 90 ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                      title="전체"
+                    >⊡</button>
+                  </div>
+                  {!panelEditing ? (
+                    <button onClick={() => { setPanelEditForm({ title: selectedReq.title, description: selectedReq.description ?? '', category: selectedReq.category ?? '', priority: selectedReq.priority ?? 'medium', status: selectedReq.status }); setPanelEditing(true) }}
+                      className="text-xs px-2 py-0.5 rounded border border-[#5E6AD2] text-[#5E6AD2] hover:bg-[#5E6AD2]/5">편집</button>
+                  ) : (
+                    <>
+                      <button onClick={async () => {
+                        await requirementApi.update(projectId!, selectedReqId!, panelEditForm)
+                        qc.invalidateQueries({ queryKey: ['requirement', projectId, selectedReqId] })
+                        qc.invalidateQueries({ queryKey: ['requirements', projectId] })
+                        setPanelEditing(false)
+                      }} className="text-xs px-2 py-0.5 rounded bg-[#5E6AD2] text-white hover:bg-[#4f5bb8]">저장</button>
+                      <button onClick={() => setPanelEditing(false)} className="text-xs px-2 py-0.5 rounded border border-gray-200 text-gray-500">취소</button>
+                    </>
+                  )}
+                  <button onClick={() => { setSelectedReqId(null); setPanelEditing(false); setPanelWidthPct(50) }} className="text-gray-400 hover:text-gray-600 ml-1">✕</button>
+                </div>
+              </div>
+
+              <div className="p-4 space-y-3 text-xs flex-1">
+                <div>
+                  <span className="text-gray-400 block mb-0.5">코드</span>
+                  <p className="font-mono text-[#5E6AD2]">{selectedReq.code}</p>
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">제목</span>
+                  {panelEditing
+                    ? <input className="w-full border rounded px-2 py-1 text-xs" value={panelEditForm.title} onChange={e => setPanelEditForm((f: any) => ({ ...f, title: e.target.value }))} />
+                    : <p className="font-medium text-gray-800">{selectedReq.title}</p>}
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">설명</span>
+                  {panelEditing
+                    ? <textarea className="w-full border rounded px-2 py-1 text-xs resize-none" rows={3} value={panelEditForm.description} onChange={e => setPanelEditForm((f: any) => ({ ...f, description: e.target.value }))} />
+                    : <p className="text-gray-600 whitespace-pre-wrap">{selectedReq.description || '-'}</p>}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">분류</span>
+                    {panelEditing
+                      ? <input className="w-full border rounded px-2 py-1 text-xs" value={panelEditForm.category} onChange={e => setPanelEditForm((f: any) => ({ ...f, category: e.target.value }))} />
+                      : <p className="text-gray-700">{selectedReq.category || '-'}</p>}
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">우선순위</span>
+                    {panelEditing
+                      ? <select className="w-full border rounded px-2 py-1 text-xs" value={panelEditForm.priority} onChange={e => setPanelEditForm((f: any) => ({ ...f, priority: e.target.value }))}>
+                          <option value="high">높음</option><option value="medium">보통</option><option value="low">낮음</option>
+                        </select>
+                      : <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${selectedReq.priority === 'high' ? 'bg-red-100 text-red-700' : selectedReq.priority === 'low' ? 'bg-gray-100 text-gray-500' : 'bg-yellow-100 text-yellow-700'}`}>{selectedReq.priority === 'high' ? '높음' : selectedReq.priority === 'low' ? '낮음' : '보통'}</span>}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-400 block mb-0.5">상태</span>
+                  {panelEditing
+                    ? <select className="w-full border rounded px-2 py-1 text-xs" value={panelEditForm.status} onChange={e => setPanelEditForm((f: any) => ({ ...f, status: e.target.value }))}>
+                        <option value="new">신규</option><option value="review">검토중</option><option value="confirmed">확정</option><option value="changed">변경</option><option value="deleted">삭제</option>
+                      </select>
+                    : <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${selectedReq.status === 'confirmed' ? 'bg-green-100 text-green-700' : selectedReq.status === 'new' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'}`}>{selectedReq.status}</span>}
+                </div>
+
+                {selectedReq.features && selectedReq.features.length > 0 && (
+                  <div className="border-t pt-2">
+                    <span className="text-gray-500 font-medium block mb-1">연결 기능 ({selectedReq.features.length})</span>
+                    <div className="space-y-1 max-h-[120px] overflow-y-auto">
+                      {selectedReq.features.map((f: any) => (
+                        <div key={f.id} className="flex items-center gap-2 text-[11px] py-0.5">
+                          <span className="font-mono text-gray-400">{f.code}</span>
+                          <span className="text-gray-600 truncate">{f.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(selectedReq as any).testScenarios && (selectedReq as any).testScenarios.length > 0 && (
+                  <div className="border-t pt-2">
+                    <span className="text-gray-500 font-medium block mb-1">테스트 시나리오 ({(selectedReq as any).testScenarios.length})</span>
+                    <div className="space-y-1 max-h-[100px] overflow-y-auto">
+                      {(selectedReq as any).testScenarios.map((s: any) => (
+                        <div key={s.id} className="flex items-center gap-2 text-[11px] py-0.5">
+                          <span className="font-mono text-gray-400">{s.code}</span>
+                          <span className="text-gray-600 truncate">{s.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-4 pb-3 flex-shrink-0">
+                <button
+                  onClick={() => navigate(`/projects/${projectId}/requirements/${selectedReqId}`)}
+                  className="w-full text-center text-xs py-1.5 border border-[#5E6AD2] text-[#5E6AD2] rounded hover:bg-[#5E6AD2]/5 transition-colors"
+                >
+                  상세 페이지로 이동
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         )}
         <Pagination
