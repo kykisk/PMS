@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Trash2, Download, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Sparkles } from 'lucide-react'
 import { testApi } from '@/api/test.api'
 import { requirementApi } from '@/api/requirement.api'
-import { featureApi } from '@/api/feature.api'
 import { exportApi } from '@/api/export.api'
 import { aiStatusApi } from '@/api/admin.api'
 import { TableSkeleton } from '@/components/shared/Skeleton'
@@ -23,13 +22,14 @@ const STATUSES = ['draft', 'ready', 'in_progress', 'completed']
 const STATUS_LABELS: Record<string, string> = { draft: '초안', ready: '준비', in_progress: '진행중', completed: '완료' }
 
 const TYPE_BADGE: Record<string, string> = {
-  unit: 'bg-purple-100 text-purple-700',
-  integration: 'bg-blue-100 text-blue-700',
-  system: 'bg-green-100 text-green-700',
-  acceptance: 'bg-orange-100 text-orange-700',
+  functional: 'bg-blue-100 text-blue-700',
+  performance: 'bg-green-100 text-green-700',
+  security: 'bg-red-100 text-red-700',
+  usability: 'bg-purple-100 text-purple-700',
+  compatibility: 'bg-orange-100 text-orange-700',
 }
 const TYPE_LABEL: Record<string, string> = {
-  unit: '단위', integration: '통합', system: '시스템', acceptance: '인수',
+  functional: '기능', performance: '성능', security: '보안', usability: '사용성', compatibility: '호환성',
 }
 
 
@@ -39,14 +39,12 @@ export default function TestListPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
-  const [filterType, setFilterType] = useState('')
   const [filterTestType, setFilterTestType] = useState('')
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState({ title: '', description: '', type: 'integration', testData: '', reqId: '', featureId: '' })
+  const [form, setForm] = useState({ title: '', description: '', testData: '', reqId: '' })
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
   const [allExpanded, setAllExpanded] = useState(true)
-  const [groupBy, setGroupBy] = useState<'requirement' | 'feature'>('requirement')
   const [updateTarget, setUpdateTarget] = useState<{ id: string; code: string; title: string } | null>(null)
   const [showMultiGen, setShowMultiGen] = useState(false)
 
@@ -69,20 +67,18 @@ export default function TestListPage() {
   }
 
   const { data: result, isLoading } = useQuery({
-    queryKey: ['scenarios', projectId, search, filterType, filterTestType],
-    queryFn: () => testApi.listScenarios(projectId!, { search: search || undefined, type: filterType || undefined, testType: filterTestType || undefined, limit: 2000 }),
+    queryKey: ['scenarios', projectId, search, filterTestType],
+    queryFn: () => testApi.listScenarios(projectId!, { search: search || undefined, testType: filterTestType || undefined, limit: 2000 }),
     enabled: !!projectId,
   })
   const scenarios = result?.data ?? []
   const { data: aiStatus } = useQuery({ queryKey: ['ai-status', projectId], queryFn: () => aiStatusApi.check(projectId!), enabled: !!projectId })
   const { data: reqResult = undefined } = useQuery({ queryKey: ['requirements', projectId], queryFn: () => requirementApi.list(projectId!, { limit: 500 }), enabled: !!projectId, staleTime: 5 * 60 * 1000 })
   const requirements = reqResult?.data ?? []
-  const { data: featureResult = undefined } = useQuery({ queryKey: ['features', projectId], queryFn: () => featureApi.list(projectId!, { limit: 500 }), enabled: !!projectId, staleTime: 5 * 60 * 1000 })
-  const features = featureResult?.data ?? []
 
   const createMutation = useMutation({
     mutationFn: () => testApi.createScenario(projectId!, form),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['scenarios', projectId] }); setShowCreate(false); setForm({ title: '', description: '', type: 'integration', testData: '', reqId: '', featureId: '' }) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['scenarios', projectId] }); setShowCreate(false); setForm({ title: '', description: '', testData: '', reqId: '' }) },
   })
 
   const deleteMutation = useMutation({
@@ -135,13 +131,6 @@ export default function TestListPage() {
                 <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
                 <Input className="pl-7 h-7 text-xs" placeholder={t('common.search')} value={search} onChange={e => { setSearch(e.target.value); setSelected(new Set()) }} />
               </div>
-              <select className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]" value={filterType} onChange={e => { setFilterType(e.target.value); setSelected(new Set()) }}>
-                <option value="">단계 전체</option>
-                <option value="unit">단위</option>
-                <option value="integration">통합</option>
-                <option value="system">시스템</option>
-                <option value="acceptance">인수</option>
-              </select>
               <select className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]" value={filterTestType} onChange={e => { setFilterTestType(e.target.value); setSelected(new Set()) }}>
                 <option value="">유형 전체</option>
                 <option value="functional">기능</option>
@@ -150,16 +139,6 @@ export default function TestListPage() {
                 <option value="usability">사용성</option>
                 <option value="compatibility">호환성</option>
               </select>
-              <div className="inline-flex border border-gray-200 rounded-md overflow-hidden text-xs h-7">
-                <button
-                  className={`px-3 flex items-center transition-colors ${groupBy === 'requirement' ? 'bg-[#5E6AD2] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
-                  onClick={() => { setGroupBy('requirement'); setExpandedGroups({}); setSelected(new Set()) }}
-                >요구사항별</button>
-                <button
-                  className={`px-3 flex items-center border-l border-gray-200 transition-colors ${groupBy === 'feature' ? 'bg-[#5E6AD2] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
-                  onClick={() => { setGroupBy('feature'); setExpandedGroups({}); setSelected(new Set()) }}
-                >기능리스트별</button>
-              </div>
             </div>
 
             {selected.size > 0 && (
@@ -199,20 +178,10 @@ export default function TestListPage() {
             ) : (() => {
               const grouped: Record<string, { label: string; code: string; scenarios: typeof scenarios }> = {}
               scenarios.forEach(s => {
-                let key: string
-                let label: string
-                let code: string
-                if (groupBy === 'feature') {
-                  const feat = (s as any).feature || null
-                  key = feat?.id || '__none__'
-                  label = feat ? feat.title : '미연결'
-                  code = feat?.code ?? ''
-                } else {
-                  const req = (s as any).requirement || (s as any).feature?.requirement || null
-                  key = req?.id || '__none__'
-                  label = req ? req.title : '미연결'
-                  code = req?.code ?? ''
-                }
+                const req = (s as any).requirement || (s as any).feature?.requirement || null
+                const key = req?.id || '__none__'
+                const label = req ? req.title : '미연결'
+                const code = req?.code ?? ''
                 if (!grouped[key]) grouped[key] = { label, code, scenarios: [] }
                 grouped[key].scenarios.push(s)
               })
@@ -224,7 +193,7 @@ export default function TestListPage() {
               const isExpanded = (key: string) => expandedGroups[key] ?? allExpanded
               const toggleGroup = (key: string) => setExpandedGroups(prev => ({ ...prev, [key]: !(prev[key] ?? allExpanded) }))
               const toggleExpandAll = () => { setAllExpanded(v => !v); setExpandedGroups({}) }
-              const groupLabel = groupBy === 'feature' ? '기능' : '요구사항'
+              const groupLabel = '요구사항'
 
               return (
               <div className="bg-white rounded-lg border overflow-hidden">
@@ -272,19 +241,8 @@ export default function TestListPage() {
                                <span className="text-xs font-medium text-[#5E6AD2]">
                                  {group.label.length > 40 ? group.label.slice(0, 40) + '...' : group.label}
                                </span>
-                               <span className="text-[10px] text-gray-400">({group.scenarios.length})</span>
-                               {groupBy === 'feature' && group.scenarios.some(s => (s as any).outdated) && (
-                                 <span className="text-amber-500 text-[11px] font-medium">⚠️ 상위 변경됨</span>
-                               )}
-                               {groupBy === 'feature' && key !== '__none__' && group.scenarios.some(s => (s as any).outdated) && (
-                                 <button
-                                   onClick={e => { e.stopPropagation(); setUpdateTarget({ id: key, code: group.code, title: group.label }) }}
-                                   className="flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#5E6AD2] text-white rounded hover:bg-[#4f5bb8] transition-colors"
-                                 >
-                                   <Sparkles size={10} />AI 업데이트
-                                 </button>
-                               )}
-                             </div>
+                                <span className="text-[10px] text-gray-400">({group.scenarios.length})</span>
+                              </div>
                            </td>
                          </tr>
                         {isExpanded(key) && group.scenarios.map(s => {
@@ -305,8 +263,8 @@ export default function TestListPage() {
                                 <span className="truncate block max-w-[200px]" title={s.title}>{s.title.length > 20 ? s.title.slice(0, 20) + '...' : s.title}{(s as any).outdated && <span title={(s as any).outdatedReason || '상위 변경됨'} className="text-amber-500 ml-1 text-[10px]">⚠️</span>}</span>
                               </td>
                               <td className="px-3 py-1.5 text-xs">
-                                <span className={`px-2 py-0.5 rounded ${TYPE_BADGE[s.type] || 'bg-gray-100 text-gray-600'}`}>
-                                  {TYPE_LABEL[s.type] || s.type}
+                                <span className={`px-2 py-0.5 rounded ${TYPE_BADGE[(s as any).testType] || 'bg-gray-100 text-gray-600'}`}>
+                                  {TYPE_LABEL[(s as any).testType] || (s as any).testType || '-'}
                                 </span>
                               </td>
                               <td className="px-3 py-1.5 text-gray-500">{s._count?.testCases ?? 0}</td>
@@ -352,33 +310,15 @@ export default function TestListPage() {
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="테스트 시나리오 생성" className="max-w-lg">
         <div className="space-y-3">
           <div className="space-y-1"><Label>시나리오명 *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="정상 로그인 시나리오" /></div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label>유형</Label>
-              <select className="w-full border rounded-md px-3 py-2 text-sm" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-                <option value="integration">통합</option>
-                <option value="unit">단위</option>
-                <option value="system">시스템</option>
-                <option value="acceptance">인수</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label>테스트 데이터</Label>
-              <Input value={form.testData} onChange={e => setForm(f => ({ ...f, testData: e.target.value }))} placeholder="선택 입력" />
-            </div>
+          <div className="space-y-1">
+            <Label>테스트 데이터</Label>
+            <Input value={form.testData} onChange={e => setForm(f => ({ ...f, testData: e.target.value }))} placeholder="선택 입력" />
           </div>
           <div className="space-y-1">
             <Label>연결 요구사항</Label>
             <select className="w-full border rounded-md px-3 py-2 text-sm" value={form.reqId} onChange={e => setForm(f => ({ ...f, reqId: e.target.value }))}>
               <option value="">선택 안 함</option>
               {requirements.map(r => <option key={r.id} value={r.id}>{r.code} - {r.title}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <Label>연결 기능</Label>
-            <select className="w-full border rounded-md px-3 py-2 text-sm" value={form.featureId} onChange={e => setForm(f => ({ ...f, featureId: e.target.value }))}>
-              <option value="">선택 안 함</option>
-              {features.map(f => <option key={f.id} value={f.id}>{f.code} - {f.title}</option>)}
             </select>
           </div>
           <div className="space-y-1">

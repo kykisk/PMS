@@ -112,6 +112,64 @@ export class AIController {
     return results.flat();
   }
 
+  @Post('generate-test-scenarios-multi-for-requirements')
+  @ApiOperation({ summary: '확정 요구사항 → 테스트 시나리오 다중 AI 자동생성' })
+  async generateTestScenariosMultiForRequirements(
+    @Body() body: { requirementIds: string[]; modelId?: string; additionalInfo?: string; detailLevel?: number },
+    @Param('projectId') pid: string,
+    @Req() req: any,
+  ) {
+    if (!body.requirementIds?.length) return { error: '요구사항을 선택하세요.' };
+    const reqs = await this.prisma.requirement.findMany({
+      where: { id: { in: body.requirementIds }, projectId: pid },
+      select: { id: true, code: true, title: true, description: true },
+    });
+    if (!reqs.length) return { error: '요구사항을 찾을 수 없습니다.' };
+    const results = await Promise.all(reqs.map(async r => {
+      const items = await this.aiService.generateTestScenarios(
+        { requirement: { title: r.title, description: r.description ?? undefined } },
+        req.user?.id, body.modelId, (body as any).additionalInfo, body.detailLevel,
+      ).catch(() => []);
+      return (items as any[]).map(item => ({
+        ...item,
+        _requirementCode: r.code,
+        _requirementTitle: r.title,
+        _requirementId: r.id,
+      }));
+    }));
+    return results.flat();
+  }
+
+  @Post('generate-test-scenarios-by-level-for-requirements')
+  @ApiOperation({ summary: '요구사항 기준 레벨별 테스트 시나리오 AI 생성' })
+  async generateTestScenariosByLevelForRequirements(
+    @Body() body: { requirementIds: string[]; levels: string[]; testType?: string; modelId?: string; additionalInfo?: string },
+    @Param('projectId') pid: string,
+    @Req() req: any,
+  ) {
+    if (!body.requirementIds?.length) return { error: '요구사항을 선택하세요.' };
+    const reqs = await this.prisma.requirement.findMany({
+      where: { id: { in: body.requirementIds }, projectId: pid },
+      select: { id: true, code: true, title: true, description: true },
+    });
+    if (!reqs.length) return { error: '요구사항을 찾을 수 없습니다.' };
+    const results = await Promise.all(reqs.map(async r => {
+      const items = await this.aiService.generateTestScenariosByLevel(
+        { title: r.title, description: r.description ?? undefined },
+        body.levels ?? ['system'],
+        body.testType ?? 'functional',
+        req.user?.id, body.modelId, (body as any).additionalInfo,
+      ).catch(() => []);
+      return (items as any[]).map(item => ({
+        ...item,
+        _requirementCode: r.code,
+        _requirementTitle: r.title,
+        _requirementId: r.id,
+      }));
+    }));
+    return results.flat();
+  }
+
   @Post('generate-test-scenarios-multi')
   @ApiOperation({ summary: '확정 기능 → 테스트 시나리오 다중 AI 자동생성' })
   async generateTestScenariosMulti(@Body() body: { featureIds: string[]; modelId?: string }, @Param('projectId') pid: string, @Req() req: any) {
@@ -130,7 +188,7 @@ export class AIController {
 
   @Post('generate-test-scenarios')
   @ApiOperation({ summary: '요구사항+기능 → 테스트 시나리오 AI 자동생성' })
-  async generateTestScenarios(@Body() body: { requirementId?: string; featureId?: string; modelId?: string }, @Param('projectId') pid: string, @Req() req: any) {
+  async generateTestScenarios(@Body() body: { requirementId?: string; featureId?: string; modelId?: string; detailLevel?: number }, @Param('projectId') pid: string, @Req() req: any) {
     const [requirement, feat] = await Promise.all([
       body.requirementId ? this.prisma.requirement.findFirst({ where: { id: body.requirementId, projectId: pid } }) : null,
       body.featureId ? this.prisma.feature.findFirst({ where: { id: body.featureId, projectId: pid } }) : null,
@@ -138,7 +196,7 @@ export class AIController {
     return this.aiService.generateTestScenarios({
       requirement: requirement ? { title: requirement.title, description: requirement.description ?? undefined } : undefined,
       feature: feat ? { title: feat.title, description: feat.description ?? undefined } : undefined,
-    }, req.user?.id, body.modelId, (body as any).additionalInfo);
+    }, req.user?.id, body.modelId, (body as any).additionalInfo, body.detailLevel);
   }
 
   @Post('update-features-for-requirement')

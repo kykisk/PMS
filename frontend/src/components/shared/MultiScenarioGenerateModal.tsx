@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { AIProgressBar } from './AIProgressBar'
 import apiClient from '@/api/client'
 import { aiStatusApi } from '@/api/admin.api'
-import { featureApi } from '@/api/feature.api'
+import { requirementApi } from '@/api/requirement.api'
 import { testApi } from '@/api/test.api'
 
 const TEMPLATES = [
@@ -20,9 +20,9 @@ interface GeneratedScenario {
   description?: string
   type?: string
   testType?: string
-  _featureCode: string
-  _featureTitle: string
-  _featureId: string
+  _requirementCode: string
+  _requirementTitle: string
+  _requirementId: string
   _selected?: boolean
 }
 
@@ -45,8 +45,7 @@ export function MultiScenarioGenerateModal({ open, onClose, projectId }: Props) 
   const [saving, setSaving] = useState(false)
   const [additionalInfo, setAdditionalInfo] = useState('')
   const [showTemplate, setShowTemplate] = useState(false)
-  const [selectedLevels, setSelectedLevels] = useState<string[]>(['integration'])
-  const [selectedTestType, setSelectedTestType] = useState('functional')
+  const [detailLevel, setDetailLevel] = useState(5)
 
   const { data: aiStatus } = useQuery({
     queryKey: ['ai-status', projectId],
@@ -54,21 +53,31 @@ export function MultiScenarioGenerateModal({ open, onClose, projectId }: Props) 
     enabled: !!projectId && open,
   })
 
-  const { data: featResult } = useQuery({
-    queryKey: ['features-confirmed-no-scenarios', projectId],
-    queryFn: () => featureApi.list(projectId!, { limit: 500, status: 'confirmed', hasNoScenarios: true }),
+  const { data: reqResult } = useQuery({
+    queryKey: ['requirements-confirmed-no-scenarios', projectId],
+    queryFn: () => requirementApi.list(projectId!, { limit: 500, status: 'confirmed' }),
     enabled: !!projectId && open,
   })
 
-  const filtered = useMemo(() => {
-    const features = featResult?.data ?? []
-    if (!searchFilter) return features
-    const q = searchFilter.toLowerCase()
-    return features.filter((f: any) => f.code.toLowerCase().includes(q) || f.title.toLowerCase().includes(q))
-  }, [featResult, searchFilter])
+  const { data: existingScenarioResult } = useQuery({
+    queryKey: ['scenarios-req-filter', projectId],
+    queryFn: () => testApi.listScenarios(projectId!, { limit: 2000 }),
+    enabled: !!projectId && open,
+  })
 
-  const toggleFeature = (id: string) => {
-    setSelectedIds(prev => {
+  const reqIdsWithScenarios = useMemo(() =>
+    new Set((existingScenarioResult?.data ?? []).filter((s: any) => s.reqId).map((s: any) => s.reqId)),
+    [existingScenarioResult]
+  )
+
+  const filtered = useMemo(() => {
+    const reqs = (reqResult?.data ?? []).filter((r: any) => !reqIdsWithScenarios.has(r.id))
+    if (!searchFilter) return reqs
+    const q = searchFilter.toLowerCase()
+    return reqs.filter((r: any) => r.code.toLowerCase().includes(q) || r.title.toLowerCase().includes(q))
+  }, [reqResult, reqIdsWithScenarios, searchFilter])
+
+  const toggleFeature = (id: string) => {    setSelectedIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) { next.delete(id) } else if (next.size < MAX_SELECT) { next.add(id) }
       return next
@@ -77,15 +86,9 @@ export function MultiScenarioGenerateModal({ open, onClose, projectId }: Props) 
 
   const generateMutation = useMutation({
     mutationFn: () => {
-      const endpoint = selectedLevels.length > 1 || (selectedLevels.length === 1 && selectedLevels[0] !== 'integration')
-        ? 'generate-test-scenarios-by-level'
-        : 'generate-test-scenarios-multi';
+      const body = { requirementIds: [...selectedIds], modelId: selectedModel || undefined, additionalInfo: additionalInfo || undefined, detailLevel };
 
-      const body = endpoint === 'generate-test-scenarios-by-level'
-        ? { featureIds: [...selectedIds], levels: selectedLevels, testType: selectedTestType, modelId: selectedModel || undefined, additionalInfo: additionalInfo || undefined }
-        : { featureIds: [...selectedIds], modelId: selectedModel || undefined, additionalInfo: additionalInfo || undefined };
-
-      return apiClient.post(`/projects/${projectId}/ai/${endpoint}`, body).then(r => r.data);
+      return apiClient.post(`/projects/${projectId}/ai/generate-test-scenarios-multi-for-requirements`, body).then(r => r.data);
     },
     onSuccess: (data: any) => {
       if (Array.isArray(data)) {
@@ -104,10 +107,10 @@ export function MultiScenarioGenerateModal({ open, onClose, projectId }: Props) 
     setResults(prev => prev.map((item, i) => i === idx ? { ...item, _selected: !item._selected } : item))
   }
 
-  const toggleGroupAll = (featureId: string) => {
-    const group = results.filter(r => r._featureId === featureId)
+  const toggleGroupAll = (requirementId: string) => {
+    const group = results.filter(r => r._requirementId === requirementId)
     const allSelected = group.every(r => r._selected)
-    setResults(prev => prev.map(item => item._featureId === featureId ? { ...item, _selected: !allSelected } : item))
+    setResults(prev => prev.map(item => item._requirementId === requirementId ? { ...item, _selected: !allSelected } : item))
   }
 
   const toggleAllResults = () => {
@@ -125,15 +128,15 @@ export function MultiScenarioGenerateModal({ open, onClose, projectId }: Props) 
         await testApi.createScenario(projectId, {
           title: item.title,
           description: item.description || undefined,
-          featureId: item._featureId || undefined,
-          type: item.type || 'integration',
+          reqId: item._requirementId || undefined,
+          type: item.type || 'system',
           testType: item.testType || 'functional',
           status: 'draft',
         })
       }
       qc.invalidateQueries({ queryKey: ['scenarios', projectId] })
-      qc.invalidateQueries({ queryKey: ['scenarios-for-filter', projectId] })
-      qc.invalidateQueries({ queryKey: ['features-confirmed-no-scenarios', projectId] })
+      qc.invalidateQueries({ queryKey: ['scenarios-req-filter', projectId] })
+      qc.invalidateQueries({ queryKey: ['requirements-confirmed-no-scenarios', projectId] })
       handleClose()
     } finally {
       setSaving(false)
@@ -148,18 +151,17 @@ export function MultiScenarioGenerateModal({ open, onClose, projectId }: Props) 
     setResults([])
     setAdditionalInfo('')
     setShowTemplate(false)
-    setSelectedLevels(['integration'])
-    setSelectedTestType('functional')
+    setDetailLevel(5)
     onClose()
   }
 
   const grouped = useMemo(() => {
     const map: Record<string, { code: string; title: string; items: (GeneratedScenario & { _idx: number })[] }> = {}
     results.forEach((r, idx) => {
-      if (!map[r._featureId]) {
-        map[r._featureId] = { code: r._featureCode, title: r._featureTitle, items: [] }
+      if (!map[r._requirementId]) {
+        map[r._requirementId] = { code: r._requirementCode, title: r._requirementTitle, items: [] }
       }
-      map[r._featureId].items.push({ ...r, _idx: idx })
+      map[r._requirementId].items.push({ ...r, _idx: idx })
     })
     return Object.entries(map)
   }, [results])
@@ -209,7 +211,7 @@ export function MultiScenarioGenerateModal({ open, onClose, projectId }: Props) 
                 </div>
               )}
 
-              <p className="text-[10px] text-gray-400">✓ 확정(confirmed) 기능 중 시나리오가 없는 항목만 표시</p>
+              <p className="text-[10px] text-gray-400">✓ 확정(confirmed) 요구사항 중 시나리오가 없는 항목만 표시</p>
               <div className="border rounded-md divide-y">
                 {filtered.map((feat: any) => {
                   const checked = selectedIds.has(feat.id)
@@ -223,32 +225,34 @@ export function MultiScenarioGenerateModal({ open, onClose, projectId }: Props) 
                   )
                 })}
                 {filtered.length === 0 && (
-                  <div className="py-6 text-center text-xs text-gray-400">확정된 기능이 없거나 모든 기능에 테스트 시나리오가 이미 생성되었습니다</div>
+                  <div className="py-6 text-center text-xs text-gray-400">확정된 요구사항이 없거나 모든 요구사항에 테스트 시나리오가 이미 생성되었습니다</div>
                 )}
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-[11px] font-medium text-gray-600">테스트 레벨 (복수 선택)</p>
-                <div className="flex gap-2 flex-wrap">
-                  {[{ value: 'unit', label: '단위' }, { value: 'integration', label: '통합' }, { value: 'system', label: '시스템' }, { value: 'acceptance', label: '인수' }].map(l => (
-                    <label key={l.value} className="flex items-center gap-1 text-xs cursor-pointer">
-                      <input type="checkbox" checked={selectedLevels.includes(l.value)}
-                        onChange={e => setSelectedLevels(prev => e.target.checked ? [...prev, l.value] : prev.filter(v => v !== l.value))} />
-                      {l.label}
-                    </label>
-                  ))}
-                </div>
-                <select className="border rounded px-2 h-7 text-xs w-full" value={selectedTestType} onChange={e => setSelectedTestType(e.target.value)}>
-                  <option value="functional">기능 테스트</option>
-                  <option value="performance">성능 테스트</option>
-                  <option value="security">보안 테스트</option>
-                  <option value="usability">사용성 테스트</option>
-                  <option value="compatibility">호환성 테스트</option>
-                </select>
               </div>
             </div>
 
             <div className="flex-shrink-0 border-t border-gray-100 pt-3 mt-2 space-y-2">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-medium text-gray-600">상세도</label>
+                  <span className="text-[10px] text-gray-400">
+                    {detailLevel <= 3 ? '간략 (핵심만)' : detailLevel <= 7 ? '보통 (권장)' : '상세 (엣지케이스 포함)'}
+                  </span>
+                </div>
+                <div className="flex gap-1.5 mb-1">
+                  {[{ label: '간략', val: 3 }, { label: '보통', val: 5 }, { label: '상세', val: 10 }].map(p => (
+                    <button key={p.val} onClick={() => setDetailLevel(p.val)}
+                      className={`flex-1 text-[10px] py-1 rounded border transition-colors ${detailLevel === p.val ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]' : 'border-gray-200 text-gray-500 hover:border-[#5E6AD2]/50'}`}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <input type="range" min={1} max={20} step={1} value={detailLevel}
+                  onChange={e => setDetailLevel(Number(e.target.value))}
+                  className="w-full accent-[#5E6AD2] h-1.5" />
+                <div className="flex justify-between text-[9px] text-gray-400 px-0.5">
+                  <span>1개</span><span>10개</span><span>20개</span>
+                </div>
+              </div>
               {aiStatus?.models && aiStatus.models.length > 0 && (
                 <select className="border rounded-md px-2 h-7 text-xs w-full text-gray-600" value={selectedModel} onChange={e => setSelectedModel(e.target.value)}>
                   <option value="">AI 모델 자동 선택</option>
@@ -304,15 +308,15 @@ export function MultiScenarioGenerateModal({ open, onClose, projectId }: Props) 
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto border rounded-md">
-              {grouped.map(([featureId, group]) => (
-                <div key={featureId}>
+              {grouped.map(([requirementId, group]) => (
+                <div key={requirementId}>
                   <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 border-b sticky top-0">
                     <span className="text-xs font-medium">
                       <span className="text-[#5E6AD2] font-mono">{group.code}</span>
                       <span className="text-gray-600 ml-1.5">{group.title.length > 30 ? group.title.slice(0, 30) + '...' : group.title}</span>
                       <span className="text-[10px] text-gray-400 ml-1">({group.items.length})</span>
                     </span>
-                    <button onClick={() => toggleGroupAll(featureId)} className="text-[10px] text-gray-500 hover:text-[#5E6AD2]">
+                    <button onClick={() => toggleGroupAll(requirementId)} className="text-[10px] text-gray-500 hover:text-[#5E6AD2]">
                       {group.items.every(i => i._selected) ? '해제' : '선택'}
                     </button>
                   </div>

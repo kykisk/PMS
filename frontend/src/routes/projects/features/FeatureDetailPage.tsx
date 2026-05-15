@@ -41,7 +41,6 @@ export default function FeatureDetailPage() {
   const qc = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [showAITask, setShowAITask] = useState(false)
-  const [showAITest, setShowAITest] = useState(false)
 
   const { data: aiStatus } = useQuery({
     queryKey: ['ai-status', projectId],
@@ -167,7 +166,6 @@ export default function FeatureDetailPage() {
         <Section title="연결 항목" action={
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => setShowAITask(true)} disabled={!aiStatus?.configured} disabledReason="관리자 페이지에서 LLM을 설정하세요" title={!aiStatus?.configured ? 'LLM 설정이 필요합니다' : undefined}><Sparkles size={14} />AI Task생성</Button>
-            <Button variant="outline" size="sm" onClick={() => setShowAITest(true)} disabled={!aiStatus?.configured} disabledReason="관리자 페이지에서 LLM을 설정하세요" title={!aiStatus?.configured ? 'LLM 설정이 필요합니다' : undefined}><Sparkles size={14} />AI 테스트생성</Button>
           </div>
         }>
           <div className="space-y-4">
@@ -295,41 +293,6 @@ export default function FeatureDetailPage() {
         }}
       />
 
-      <AIGenerateModal
-        open={showAITest}
-        onClose={() => setShowAITest(false)}
-        title="🤖 AI 테스트 시나리오 생성"
-        projectId={projectId!}
-        endpoint="ai/generate-test-scenarios"
-        payload={{ featureId }}
-         onConfirm={async (items) => {
-           const { testApi } = await import('@/api/test.api')
-           for (const item of items) {
-             if (!item.title) continue
-             await testApi.createScenario(projectId!, {
-               title: String(item.title),
-               description: item.description ? String(item.description) : undefined,
-               type: item.type ? String(item.type) : 'integration',
-               testType: item.testType ? String(item.testType) : 'functional',
-               testData: item.testData ? (typeof item.testData === 'string' ? item.testData : JSON.stringify(item.testData)) : undefined,
-               featureId: featureId!,
-             })
-           }
-          qc.invalidateQueries({ queryKey: ['feature', projectId, featureId] })
-          qc.invalidateQueries({ queryKey: ['scenarios', projectId] })
-        }}
-        renderItem={(item) => (
-          <div>
-            <div className="flex items-center gap-2">
-              <p className="font-medium text-sm">{item.title}</p>
-              <span className={`px-1.5 py-0.5 rounded text-xs ${item.type === 'unit' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                {item.type === 'unit' ? '단위' : '통합'}
-              </span>
-            </div>
-            {item.description && <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>}
-          </div>
-        )}
-      />
     </AppLayout>
   )
 }

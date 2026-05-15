@@ -39,6 +39,7 @@ export default function RequirementDetailPage() {
   const qc = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [showAIFeature, setShowAIFeature] = useState(false)
+  const [showAITest, setShowAITest] = useState(false)
 
   const { data: aiStatus } = useQuery({
     queryKey: ['ai-status', projectId],
@@ -201,15 +202,26 @@ export default function RequirementDetailPage() {
         </form>
 
         <Section title="연결 항목" action={
-          <Button
-            variant="outline" size="sm"
-            onClick={() => setShowAIFeature(true)}
-            disabled={!aiStatus?.configured}
-            disabledReason="관리자 페이지에서 LLM을 설정하세요"
-            title={!aiStatus?.configured ? 'LLM 설정이 필요합니다. 관리자 페이지에서 LLM을 활성화하세요.' : undefined}
-          >
-            <Sparkles size={14} />AI 기능생성
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline" size="sm"
+              onClick={() => setShowAITest(true)}
+              disabled={!aiStatus?.configured}
+              disabledReason="관리자 페이지에서 LLM을 설정하세요"
+              title={!aiStatus?.configured ? 'LLM 설정이 필요합니다.' : undefined}
+            >
+              <Sparkles size={14} />AI 테스트생성
+            </Button>
+            <Button
+              variant="outline" size="sm"
+              onClick={() => setShowAIFeature(true)}
+              disabled={!aiStatus?.configured}
+              disabledReason="관리자 페이지에서 LLM을 설정하세요"
+              title={!aiStatus?.configured ? 'LLM 설정이 필요합니다. 관리자 페이지에서 LLM을 활성화하세요.' : undefined}
+            >
+              <Sparkles size={14} />AI 기능생성
+            </Button>
+          </div>
         }>
           <div className="space-y-4">
             {linkedUCs.length > 0 && (
@@ -324,6 +336,40 @@ export default function RequirementDetailPage() {
         renderItem={(item) => (
           <div>
             <p className="font-medium text-sm">{item.title}</p>
+            {item.description && <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>}
+          </div>
+        )}
+      />
+      <AIGenerateModal
+        open={showAITest}
+        onClose={() => setShowAITest(false)}
+        title="🤖 AI 테스트 시나리오 생성"
+        projectId={projectId!}
+        endpoint="ai/generate-test-scenarios"
+        payload={{ requirementId: reqId }}
+        showDetailLevel={true}
+        onConfirm={async (items) => {
+          const { testApi } = await import('@/api/test.api')
+          for (const item of items) {
+            if (!item.title) continue
+            await testApi.createScenario(projectId!, {
+              title: String(item.title),
+              description: item.description ? String(item.description) : undefined,
+              type: item.type ? String(item.type) : 'system',
+              testType: item.testType ? String(item.testType) : 'functional',
+              testData: item.testData ? (typeof item.testData === 'string' ? item.testData : JSON.stringify(item.testData)) : undefined,
+              reqId: reqId,
+            })
+          }
+          qc.invalidateQueries({ queryKey: ['requirement', projectId, reqId] })
+          qc.invalidateQueries({ queryKey: ['scenarios', projectId] })
+        }}
+        renderItem={(item) => (
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="font-medium text-sm">{item.title}</p>
+              <span className="px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-700">{item.type ?? 'system'}</span>
+            </div>
             {item.description && <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>}
           </div>
         )}

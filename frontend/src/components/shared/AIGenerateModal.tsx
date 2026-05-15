@@ -32,18 +32,24 @@ interface Props {
   renderItem?: (item: GeneratedItem) => React.ReactNode
 }
 
-export function AIGenerateModal({ open, onClose, title, projectId, endpoint, payload, onConfirm, renderItem }: Props) {
+export function AIGenerateModal({ open, onClose, title, projectId, endpoint, payload, onConfirm, renderItem, showDetailLevel }: Props & { showDetailLevel?: boolean }) {
   const [items, setItems] = useState<GeneratedItem[]>([])
   const [generated, setGenerated] = useState(false)
   const [rawText, setRawText] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
   const [additionalInfo, setAdditionalInfo] = useState('')
   const [showTemplate, setShowTemplate] = useState(false)
+  const [detailLevel, setDetailLevel] = useState(5)
 
   const { data: aiStatus } = useQuery({ queryKey: ['ai-status', projectId], queryFn: () => aiStatusApi.check(projectId), enabled: !!projectId })
 
   const generateMutation = useMutation({
-    mutationFn: () => apiClient.post(`/projects/${projectId}/${endpoint}`, { ...payload, modelId: selectedModel || undefined, additionalInfo: additionalInfo || undefined }).then(r => r.data),
+    mutationFn: () => apiClient.post(`/projects/${projectId}/${endpoint}`, {
+      ...payload,
+      modelId: selectedModel || undefined,
+      additionalInfo: additionalInfo || undefined,
+      ...(showDetailLevel ? { detailLevel } : {}),
+    }).then(r => r.data),
     onSuccess: (data: any) => {
       if (Array.isArray(data)) {
         if (data[0]?._parseError) {
@@ -91,6 +97,30 @@ export function AIGenerateModal({ open, onClose, title, projectId, endpoint, pay
                 <option value="">자동 선택 (기본)</option>
                 {aiStatus.models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
               </select>
+            )}
+            {showDetailLevel && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-medium text-gray-600">상세도</label>
+                  <span className="text-[10px] text-gray-400">
+                    {detailLevel <= 3 ? '간략 (핵심만)' : detailLevel <= 7 ? '보통 (권장)' : '상세 (엣지케이스 포함)'}
+                  </span>
+                </div>
+                <div className="flex gap-1.5">
+                  {[{ label: '간략', val: 3 }, { label: '보통', val: 5 }, { label: '상세', val: 10 }].map(p => (
+                    <button key={p.val} onClick={() => setDetailLevel(p.val)}
+                      className={`flex-1 text-[10px] py-1 rounded border transition-colors ${detailLevel === p.val ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]' : 'border-gray-200 text-gray-500 hover:border-[#5E6AD2]/50'}`}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <input type="range" min={1} max={20} step={1} value={detailLevel}
+                  onChange={e => setDetailLevel(Number(e.target.value))}
+                  className="w-full accent-[#5E6AD2] h-1.5" />
+                <div className="flex justify-between text-[9px] text-gray-400">
+                  <span>1개</span><span>10개</span><span>20개</span>
+                </div>
+              </div>
             )}
             <div className="space-y-1">
               <div className="flex items-center justify-between">

@@ -8,7 +8,7 @@
     "requirements": "요구사항",
     "features": "기능 리스트",
     "tasks": "Task",
-    "tests": "테스트",
+    "tests": "테스트 시나리오",
     "testExecution": "테스트 수행",
     "defects": "결함",
     "traceability": "추적성",

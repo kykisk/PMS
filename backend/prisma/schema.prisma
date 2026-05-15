@@ -554,6 +554,7 @@ model TestPhase {
   code        String
   title       String
   description String?
+  phaseType   String    @default("system")   // integration | system | acceptance
   status      String    @default("planned")
   startDate   DateTime?
   endDate     DateTime?

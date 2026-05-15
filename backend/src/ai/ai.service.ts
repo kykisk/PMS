@@ -357,13 +357,19 @@ ${reqList}${existingList}${additionalInfo ? `\n\n=== 추가 지시사항 ===\n${
     catch { return [{ _rawText: text, _parseError: true }]; }
   }
 
-  async generateTestScenarios(context: { requirement?: { title: string; description?: string }; feature?: { title: string; description?: string } }, userId?: string, modelId?: string, additionalInfo?: string): Promise<any[]> {
+  async generateTestScenarios(context: { requirement?: { title: string; description?: string }; feature?: { title: string; description?: string } }, userId?: string, modelId?: string, additionalInfo?: string, detailLevel?: number): Promise<any[]> {
     const model = await this.getModel(userId, modelId);
     const config = await this.adminService.getActiveLLMConfig();
+    const count = detailLevel ?? 5
+    const countGuide = count <= 3
+      ? `핵심 정상/비정상 케이스만 포함하여 최대 ${count}개 이내로 간략하게`
+      : count <= 7
+        ? `주요 흐름을 포함하여 ${count}개 내외로`
+        : `경계값, 예외, 보안 케이스까지 포함하여 ${count}개 내외로 상세하게`
     const { text } = await generateText({
       model,
       system: this.getPrompt(config, 'generateTestScenarios'),
-      prompt: `요구사항: ${context.requirement?.title ?? ''}\n기능: ${context.feature?.title ?? ''}\n설명: ${context.requirement?.description ?? context.feature?.description ?? ''}${additionalInfo ? `\n\n추가 지시사항:\n${additionalInfo}` : ''}`,
+      prompt: `요구사항: ${context.requirement?.title ?? ''}\n기능: ${context.feature?.title ?? ''}\n설명: ${context.requirement?.description ?? context.feature?.description ?? ''}\n\n[생성 개수 지침] ${countGuide} 시나리오를 도출해주세요.${additionalInfo ? `\n\n추가 지시사항:\n${additionalInfo}` : ''}`,
       maxOutputTokens: 8000,
     });
     try { return this.parseJSON(text); }
