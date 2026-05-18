@@ -1,4 +1,90 @@
-# PMS 구현 Handoff — 세션 3 추가 작업 내역
+# PMS 구현 Handoff — 세션 4 추가 작업 내역
+
+---
+
+## 세션 4 주요 변경사항
+
+### 1. 테스트 시나리오 상세(TestDetailPage) 수행 기능 제거
+- 케이스 "수행" 버튼, 회차 선택 드롭다운, 결과 기록 모달 제거
+- 케이스 테이블: 결과 컬럼 → 우선순위 컬럼으로 교체
+- 테스트 시나리오 = **설계 전용**, 수행은 테스트 수행 메뉴에서만
+
+### 2. 테스트 수행(TestPhaseDetailPage) 단순화
+- "수행 회차 추가" 버튼 + 모달 제거 (Import가 자동 생성)
+- 플로우: Template 다운로드 → Excel 작성 → Import → 회차 자동 생성
+- 빈 상태 메시지: "Template을 다운받아 작성 후 Import하세요."
+
+### 3. Excel Export 인증 오류 수정
+- `window.open()` → `fetch() + Authorization Bearer` + Blob 다운로드
+- test-execution.api.ts의 `exportTemplate`, `exportResult` 모두 수정
+
+### 4. 테스트 목록 뷰 개선
+- [요구사항별 | 테스트 시나리오] 토글 추가
+- 테스트 시나리오 탭: 플랫 테이블 (시나리오ID | 시나리오명 | Test Case 목록)
+- 케이스는 번호+우선순위배지+제목 줄바꿈 표시
+- Test Case JSON 입력값 파싱 표시 (key: value 형태)
+
+### 5. AI 시나리오 생성 컨텍스트 강화
+- 요구사항으로 시나리오 생성 시 **연결된 기능리스트 + Task 목록**도 AI에 전달
+- 더 구체적이고 실행 가능한 시나리오 생성
+
+### 6. 테스트 수행 회차 클릭 시 스냅샷 초기화 수정
+- 기존: 저장된 결과만 표시 (새 회차는 빈 화면)
+- 수정: TestPhase 스냅샷에서 전체 시나리오/케이스 초기화 후 기존 결과 오버레이
+
+### 7. 테스트 시나리오 사이드바 패널 개선
+- 테스트 케이스 목록 표시 (번호+우선순위배지+제목)
+- 케이스 수 숫자 → 실제 목록으로 변경
+
+### 8. 목록 페이지 스크롤 구조
+- 툴바/필터 고정, 테이블만 스크롤
+- `max-h-[calc(100vh-140px)] overflow-y-auto` 적용
+
+### 9. 테스트 수행 카드 수정/삭제
+- ✏️ 수정 (Admin만), 🗑️ 삭제 (전체)
+- 상태 변경 드롭다운 목록 캐시 무효화 수정
+
+### 10. MultiCaseGenerateModal 신규
+- 테스트 목록에서 다중 시나리오 선택 → AI 케이스 일괄 생성
+- `generate-test-cases-multi` 엔드포인트 추가
+
+---
+
+## 현재 상태
+
+### 테스트 수행 플로우 (확정)
+```
+1. 테스트 수행 메뉴 → 프로젝트 회차 카드 클릭
+2. [Template 다운로드] → Excel 파일 저장
+3. 수행자들에게 배포 → Pass/Fail/Blocked/N/A 작성
+4. [결과 Import] → 수행자 자동 추출 → 회차 자동 생성
+5. 회차 클릭 → 결과 조회/수정 가능
+6. [결과서 Export] → 사용자별 시트로 Excel 생성
+```
+
+### 미완성 / 다음 작업 후보
+- 테스트 수행 Template 형식 확인 및 개선 필요 여부
+- 결과 수정 UI (TestRoundDetailPage) 사용성 검토
+- 다른 목록 페이지 사이드 패널 추가 (UseCase, UserStory 등)
+
+---
+
+## 실행 방법
+```bash
+pkill -f "node dist/src/main" 2>/dev/null
+fuser -k 3000/tcp 2>/dev/null; sleep 2
+cd /home/ec2-user/workspace/PMS/backend
+DATABASE_URL="postgresql://pms_user:pms_password@localhost:5432/pms_db" \
+JWT_SECRET="pms-jwt-secret-change-in-production" JWT_EXPIRES_IN="7d" PORT=3000 \
+node dist/src/main.js &
+
+pkill -f "vite" 2>/dev/null; sleep 1
+cd /home/ec2-user/workspace/PMS/frontend && npx vite preview &
+```
+
+## 계정 / AI 모델
+- admin@pms.com / Admin1234!
+- AI: us.anthropic.claude-opus-4-6-v1 (Bedrock)
 
 ## 이전 HANDOFF (세션 2) 내용은 유지되며, 아래는 세션 3 추가사항
 

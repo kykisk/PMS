@@ -13,88 +13,72 @@ SI/SW 프로젝트 산출물을 AI와 연계하여 자동 관리하는 웹 앱. 
 ## 디렉토리
 ```
 PMS/
-├── SPEC/PROJECT_STATE.md        ← 전체 상태 문서
-├── SPEC/TEST_REFORM_PLAN.md     ← 테스트 시스템 개편 계획 (완료)
+├── SPEC/HANDOFF.md              ← 최신 작업 인계사항
 ├── SPEC/TEST_EXECUTION_PLAN.md  ← 테스트 수행 시스템 계획
-├── SPEC/HANDOFF.md              ← 세션 작업 인계 문서
-├── backend/src/                 ← NestJS 모듈
-│   ├── auth, project, requirement, feature, task
-│   ├── test-management          ← 시나리오/케이스 설계 + Cycle/Execution/Defect
-│   ├── test-execution           ← 테스트 수행 (Phase/Round/Result + Excel)
-│   ├── ai, admin, export, design, change-request, usecase
-│   └── common/
+├── backend/src/
+│   ├── test-management/         ← 시나리오/케이스 설계
+│   ├── test-execution/          ← 테스트 수행 (Phase/Round/Result)
+│   ├── ai/                      ← AI 생성 엔드포인트
+│   └── ...
 ├── frontend/src/
-│   ├── routes/projects/{dashboard,settings,requirements,features,design,
-│   │   tasks,tests,test-execution,traceability,use-cases,user-stories,
-│   │   change-requests,defects}
-│   └── components/shared/       ← Modal, GanttView, AI모달들, TesterAutocomplete,
-│                                   MultiFeatureGenerateModal, MultiTaskGenerateModal,
-│                                   MultiScenarioGenerateModal 등
-└── restart-all.sh, restart-be.sh, restart-fe.sh
+│   ├── routes/projects/tests/        ← 테스트 시나리오 메뉴
+│   ├── routes/projects/test-execution/ ← 테스트 수행 메뉴
+│   └── components/shared/            ← AI모달, 공용 컴포넌트
+└── restart-all/be/fe.sh
 ```
 
 ## 실행
 ```bash
-# BE (빌드 없이 재시작)
 pkill -f "node dist/src/main" 2>/dev/null
-fuser -k 3000/tcp 2>/dev/null
-sleep 2
-cd backend && DATABASE_URL="postgresql://pms_user:pms_password@localhost:5432/pms_db" JWT_SECRET="pms-jwt-secret-change-in-production" JWT_EXPIRES_IN="7d" PORT=3000 node dist/src/main.js &
-
-# FE (빌드 없이 재시작)
+fuser -k 3000/tcp 2>/dev/null; sleep 2
+cd backend && DATABASE_URL="postgresql://pms_user:pms_password@localhost:5432/pms_db" \
+  JWT_SECRET="pms-jwt-secret-change-in-production" JWT_EXPIRES_IN="7d" PORT=3000 \
+  node dist/src/main.js &
 pkill -f "vite" 2>/dev/null; sleep 1
 cd frontend && npx vite preview &
-
-# 빌드 포함 재시작
-./restart-all.sh
 ```
 
-## 계정
+## 계정 / AI 모델
 - admin@pms.com / Admin1234!
+- AI 모델: us.anthropic.claude-opus-4-6-v1 (Bedrock)
 
 ## 핵심 규칙
-- Tailwind v4 (CSS 변수 + @import "tailwindcss")
-- 액센트 컬러: #5E6AD2 (인디고)
-- 컴팩트 UI: text-xs, h-7 inputs, py-1.5 table rows
-- API base: `/api/v1` (Vite proxy → localhost:3000)
-- BE ValidationPipe: whitelist + forbidNonWhitelisted (AI controller는 whitelist:false)
-- 목록: 그룹핑 있는 페이지(테스트/기능) = useQuery(limit:2000), Task = useInfiniteQuery(무한스크롤)
-- AI 모달: forbidNonWhitelisted 때문에 createScenario/createTask 호출 시 필요 필드만 명시적 추출 필수
-- AI parseJSON: "A".repeat(N) 같은 JS 표현식 치환 처리 있음
-- 코드 자동채번: nextScenarioCode는 전체 조회 후 숫자 max 계산 (문자열 정렬 버그 방지)
-- AI 모델 우선순위: 개인LLM > 승인된공용 > 글로벌활성
+- Tailwind v4, 액센트 #5E6AD2, text-xs 컴팩트 UI
+- BE ValidationPipe: whitelist + forbidNonWhitelisted → AI 모달 저장 시 **필요 필드만 명시적 추출** 필수
+- AI parseJSON: `"A".repeat(N)` JS 표현식 치환 처리
+- 코드 자동채번: 문자열 정렬 버그 → 전체 조회 후 숫자 max 계산
+- Export 인증: `window.open()` 금지 → `fetch() + Authorization` + Blob 다운로드
+- 목록: 그룹핑 페이지(테스트/기능) = useQuery(limit:2000), Task = useInfiniteQuery
 
 ## 주요 기능
 1. 마크다운 AI분석 → 요구사항/UseCase/UserStory 추출
 2. 요구사항 → AI → 기능리스트 (확정 건만)
 3. 기능리스트 → AI → Task
-4. **요구사항** → AI → 테스트 시나리오 (기능 기반 아님)
-5. 테스트 시나리오 → AI → 케이스 자동 생성 (상세도 조절 가능)
+4. **요구사항** → AI → 테스트 시나리오 (기능리스트+Task 컨텍스트 포함)
+5. 테스트 시나리오 → AI → 케이스 (상세도 조절 1~20개)
 6. 상위 변경 → outdated 전파 → AI 업데이트 제안
 7. 결함 관리 (7단계 상태전이)
-8. 테스트 수행 (프로젝트 회차 → 수행 회차 → Excel Import/Export)
+8. **테스트 수행**: Excel Template 다운로드 → 결과 작성 → Import → 회차 자동 생성
 9. Gantt 차트 (접기/펼치기, Dependency FS/FF/SS/SF)
 10. 추적성(RTM) 관리
 
-## 테스트 시스템 구조 (중요)
-- **테스트 시나리오 메뉴** = 시나리오/케이스 설계 (레벨 구분 없음, 요구사항 기준)
-- **테스트 수행 메뉴** = 실행 관리 (TestPhase에 phaseType: integration/system/acceptance)
-- 레벨(unit/integration/system/acceptance)은 수행 회차(TestPhase)에서 구분
-- AI 시나리오 생성: 요구사항 기준, 상세도 슬라이더(1~20개) + 프리셋(간략/보통/상세)
+## 테스트 시스템 (중요)
+- **테스트 시나리오 메뉴** = 시나리오/케이스 설계 + AI 생성 (수행 기능 없음)
+- **테스트 수행 메뉴** = Excel Import 중심 실행 관리
+  - Template 다운로드 → Excel 작성 → Import → 수행 회차 자동 생성
+  - 수동 회차 추가 없음 (Import가 자동 생성)
+  - 회차 클릭 → 결과 조회/수정 가능
+  - TestPhase.phaseType: integration/system/acceptance
+- AI 시나리오 생성: 요구사항 기준, **연결된 기능리스트+Task 컨텍스트 포함**
 
 ## 사이드 패널 (목록 UX)
-- 요구사항/기능리스트/Task/테스트 시나리오 목록에서 **행 클릭 → 우측 사이드 패널**
-- 패널: `position: fixed right-0 top-0 bottom-0 z-50` (뷰포트 기준, 스크롤 무관)
-- 너비: `panelWidthPct` state (기본 50%), ½/¾/⊡ 프리셋 버튼 + 좌측 엣지 드래그 리사이즈
-- 패널 내 인라인 편집 → 저장 → 목록 자동 갱신
-- "상세 페이지로 이동" 버튼으로 기존 DetailPage 접근 유지
+- 요구사항/기능/Task/테스트 목록 행 클릭 → `position: fixed` 우측 패널
+- 너비: 기본 50%, ½/¾/⊡ 프리셋 + 좌측 엣지 드래그 리사이즈
+- 인라인 편집 + "상세 페이지로 이동" 버튼
 
-## AI 다중 생성 모달 레이아웃
-- `max-w-4xl` 2패널 구조
-- 왼쪽(55%): 선택 목록 (검색 + 체크박스)
-- 오른쪽: 설정 (상세도/모델/추가정보/버튼)
-- Step 3 결과: 왼쪽=결과목록, 오른쪽=선택통계+액션버튼
+## AI 다중 생성 모달
+- `max-w-4xl` 좌우 2패널 구조 (왼쪽: 선택, 오른쪽: 설정+버튼)
+- Step 3 결과: 왼쪽=결과목록, 오른쪽=통계+저장버튼
 
 ## 상세 정보
-- `SPEC/PROJECT_STATE.md` — 데이터 모델, API
-- `SPEC/HANDOFF.md` — 최신 작업 내역 및 인계사항
+- `SPEC/HANDOFF.md` — 최신 세션 작업 내역

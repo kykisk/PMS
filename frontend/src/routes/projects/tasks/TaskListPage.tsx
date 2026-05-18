@@ -245,66 +245,73 @@ export default function TaskListPage() {
 
   return (
     <AppLayout>
-      <div className="p-4">
-        <div className="flex justify-between items-center mb-3">
-          <h2 className="text-sm font-bold text-gray-800">{t('nav.tasks')}</h2>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => exportApi.wbs(projectId!)}><Download size={12} />WBS Excel</Button>
-            <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => exportApi.wbsPdf(projectId!)}><Download size={12} />WBS PDF</Button>
-            {aiStatus?.configured && (
-              <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setShowMultiGen(true)}>
-                <Sparkles size={12} />AI Task 생성
+      <div className="flex flex-col">
+        <div className="flex-shrink-0 px-4 pt-4 pb-2">
+          <div className="flex justify-between items-center">
+            <h2 className="text-sm font-bold text-gray-800">{t('nav.tasks')}</h2>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => exportApi.wbs(projectId!)}><Download size={12} />WBS Excel</Button>
+              <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => exportApi.wbsPdf(projectId!)}><Download size={12} />WBS PDF</Button>
+              {aiStatus?.configured && (
+                <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setShowMultiGen(true)}>
+                  <Sparkles size={12} />AI Task 생성
+                </Button>
+              )}
+              <Button size="sm" className="h-7 text-xs px-2" onClick={() => { setEditTarget(null); reset({ status: 'pending', progress: 0 }); setShowCreate(true) }}>
+                <Plus size={12} />{t('common.create')}
               </Button>
-            )}
-            <Button size="sm" className="h-7 text-xs px-2" onClick={() => { setEditTarget(null); reset({ status: 'pending', progress: 0 }); setShowCreate(true) }}>
-              <Plus size={12} />{t('common.create')}
-            </Button>
+            </div>
+          </div>
+
+          <div className="flex border-b mt-2">
+            <button onClick={() => setViewTab('list')} className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${viewTab === 'list' ? 'border-[#5E6AD2] text-[#5E6AD2]' : 'border-transparent text-gray-500'}`}>목록</button>
+            <button onClick={() => setViewTab('gantt')} className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${viewTab === 'gantt' ? 'border-[#5E6AD2] text-[#5E6AD2]' : 'border-transparent text-gray-500'}`}>간트</button>
           </div>
         </div>
 
-        <div className="flex border-b mb-3">
-          <button onClick={() => setViewTab('list')} className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${viewTab === 'list' ? 'border-[#5E6AD2] text-[#5E6AD2]' : 'border-transparent text-gray-500'}`}>목록</button>
-          <button onClick={() => setViewTab('gantt')} className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${viewTab === 'gantt' ? 'border-[#5E6AD2] text-[#5E6AD2]' : 'border-transparent text-gray-500'}`}>간트</button>
-        </div>
-
-        {viewTab === 'list' && (<>
-        <div className="flex gap-2 mb-3">
-          <div className="relative flex-1 max-w-xs">
-            <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
-            <Input className="pl-7 h-7 text-xs" placeholder={t('common.search')} value={search} onChange={e => { setSearch(e.target.value); setSelected(new Set()) }} />
-          </div>
-          <select className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setSelected(new Set()) }}>
-            <option value="">상태 전체</option>
-            {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
-          </select>
-        </div>
-
-        {selected.size > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg mb-2">
-            <span className="text-xs text-blue-700 font-medium">{selected.size}개 선택됨</span>
-            <select className="h-7 text-xs border rounded px-2" defaultValue="" onChange={e => {
-              const status = e.target.value
-              if (!status) return
-              if (confirm(`선택한 ${selected.size}개를 "${STATUS_LABELS[status]}"으로 변경하시겠습니까?`)) {
-                bulkStatusMutation.mutate({ ids: [...selected], status })
-              }
-              e.target.value = ''
-            }}>
-              <option value="">상태변경...</option>
+        {viewTab === 'list' && (
+        <div className="flex-shrink-0 px-4 py-2">
+          <div className="flex gap-2 mb-2">
+            <div className="relative flex-1 max-w-xs">
+              <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Input className="pl-7 h-7 text-xs" placeholder={t('common.search')} value={search} onChange={e => { setSearch(e.target.value); setSelected(new Set()) }} />
+            </div>
+            <select className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setSelected(new Set()) }}>
+              <option value="">상태 전체</option>
               {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
             </select>
-            <button
-              onClick={() => { if (confirm(`선택한 ${selected.size}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate([...selected]) }}
-              className="text-xs px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
-            >선택 삭제</button>
-            <button
-              onClick={() => { if (confirm(`전체 ${tasks.length}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate(tasks.map(i => i.id)) }}
-              className="text-xs px-2 py-0.5 border border-red-400 text-red-600 rounded hover:bg-red-50"
-            >전체 삭제</button>
-            <button onClick={() => setSelected(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">취소</button>
           </div>
+
+          {selected.size > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg mb-2">
+              <span className="text-xs text-blue-700 font-medium">{selected.size}개 선택됨</span>
+              <select className="h-7 text-xs border rounded px-2" defaultValue="" onChange={e => {
+                const status = e.target.value
+                if (!status) return
+                if (confirm(`선택한 ${selected.size}개를 "${STATUS_LABELS[status]}"으로 변경하시겠습니까?`)) {
+                  bulkStatusMutation.mutate({ ids: [...selected], status })
+                }
+                e.target.value = ''
+              }}>
+                <option value="">상태변경...</option>
+                {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+              </select>
+              <button
+                onClick={() => { if (confirm(`선택한 ${selected.size}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate([...selected]) }}
+                className="text-xs px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
+              >선택 삭제</button>
+              <button
+                onClick={() => { if (confirm(`전체 ${tasks.length}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate(tasks.map(i => i.id)) }}
+                className="text-xs px-2 py-0.5 border border-red-400 text-red-600 rounded hover:bg-red-50"
+              >전체 삭제</button>
+              <button onClick={() => setSelected(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">취소</button>
+            </div>
+          )}
+        </div>
         )}
 
+        <div className="overflow-y-auto px-4 pb-4" style={{ maxHeight: "calc(100vh - 140px)" }}>
+        {viewTab === 'list' && (<>
         {isLoading ? (
           <div className="bg-white rounded-lg border p-6">
             <TableSkeleton rows={5} cols={8} />
@@ -813,6 +820,7 @@ export default function TaskListPage() {
             )}
           </div>
         )}
+        </div>
       </div>
 
       <Modal open={showCreate} onClose={() => { setShowCreate(false); setEditTarget(null); reset() }} title={editTarget ? 'Task 수정' : 'Task 생성'} className="max-w-lg">

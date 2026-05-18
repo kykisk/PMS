@@ -42,6 +42,12 @@ export default function TestRoundDetailPage() {
     enabled: !!projectId && !!phaseId && !!roundId,
   })
 
+  const { data: phase, isLoading: phaseLoading } = useQuery({
+    queryKey: ['test-phase', projectId, phaseId],
+    queryFn: () => testExecutionApi.getPhase(projectId!, phaseId!),
+    enabled: !!projectId && !!phaseId,
+  })
+
   const { data: existingResults = [], isLoading: resultsLoading } = useQuery({
     queryKey: ['test-results', roundId],
     queryFn: () => testExecutionApi.getResults(projectId!, roundId!),
@@ -49,22 +55,37 @@ export default function TestRoundDetailPage() {
   })
 
   useEffect(() => {
-    if (existingResults.length > 0) {
-      const map: Record<string, ResultState> = {}
-      existingResults.forEach(r => {
-        const key = `${r.scenarioCode}::${r.caseIndex}`
+    if (!phase) return
+    const snapshot = (phase as any).snapshotData
+    if (!snapshot?.scenarios) return
+
+    const map: Record<string, ResultState> = {}
+    snapshot.scenarios.forEach((sc: any) => {
+      (sc.cases || []).forEach((tc: any) => {
+        const key = `${sc.code}::${tc.index}`
         map[key] = {
-          scenarioCode: r.scenarioCode,
-          caseTitle: r.caseTitle,
-          caseIndex: r.caseIndex,
+          scenarioCode: sc.code,
+          caseTitle: tc.title,
+          caseIndex: tc.index,
+          result: '',
+          actual: '',
+          stepResults: null,
+        }
+      })
+    })
+    existingResults.forEach(r => {
+      const key = `${r.scenarioCode}::${r.caseIndex}`
+      if (map[key]) {
+        map[key] = {
+          ...map[key],
           result: r.result || '',
           actual: r.actual || '',
           stepResults: r.stepResults || null,
         }
-      })
-      setResults(map)
-    }
-  }, [existingResults])
+      }
+    })
+    setResults(map)
+  }, [phase, existingResults])
 
   const saveMutation = useMutation({
     mutationFn: () => {
@@ -126,7 +147,7 @@ export default function TestRoundDetailPage() {
     setDefectSeverity('major')
   }
 
-  if (roundLoading || resultsLoading) {
+  if (roundLoading || resultsLoading || phaseLoading) {
     return (
       <AppLayout>
         <div className="p-4"><TableSkeleton rows={8} cols={5} /></div>

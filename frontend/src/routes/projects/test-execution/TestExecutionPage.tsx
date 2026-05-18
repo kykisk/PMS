@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, AlertTriangle } from 'lucide-react'
+import { Plus, AlertTriangle, Pencil, Trash2 } from 'lucide-react'
 import { testExecutionApi } from '@/api/test-execution.api'
 import { useAuthStore } from '@/stores/auth.store'
 import { Button } from '@/components/ui/button'
@@ -17,10 +17,17 @@ const STATUS_LABEL: Record<string, string> = {
   planned: '계획됨', in_progress: '진행중', completed: '완료', closed: '종료',
 }
 const STATUS_BADGE: Record<string, string> = {
-  planned: 'bg-gray-100 text-gray-600',
-  in_progress: 'bg-blue-100 text-blue-700',
-  completed: 'bg-green-100 text-green-700',
-  closed: 'bg-gray-200 text-gray-500',
+  planned: 'bg-gray-100 text-gray-500',
+  in_progress: 'bg-blue-100 text-blue-700 font-semibold',
+  completed: 'bg-green-100 text-green-700 font-semibold',
+  closed: 'bg-slate-200 text-slate-600',
+}
+
+const STATUS_BORDER: Record<string, string> = {
+  planned: 'border-l-gray-300',
+  in_progress: 'border-l-blue-500',
+  completed: 'border-l-green-500',
+  closed: 'border-l-slate-400',
 }
 
 export default function TestExecutionPage() {
@@ -30,6 +37,7 @@ export default function TestExecutionPage() {
   const qc = useQueryClient()
   const { user } = useAuthStore()
   const [showCreate, setShowCreate] = useState(false)
+  const [editTarget, setEditTarget] = useState<any>(null)
   const [form, setForm] = useState({ title: '', description: '', startDate: '', endDate: '' })
 
   const { data: phases = [], isLoading } = useQuery({
@@ -51,6 +59,35 @@ export default function TestExecutionPage() {
       setForm({ title: '', description: '', startDate: '', endDate: '' })
     },
   })
+
+  const updateMutation = useMutation({
+    mutationFn: () => testExecutionApi.updatePhase(projectId!, editTarget.id, {
+      title: form.title,
+      description: form.description || undefined,
+      startDate: form.startDate || undefined,
+      endDate: form.endDate || undefined,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['test-phases', projectId] })
+      setEditTarget(null)
+      setForm({ title: '', description: '', startDate: '', endDate: '' })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => testExecutionApi.deletePhase(projectId!, id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['test-phases', projectId] }),
+  })
+
+  const openEdit = (phase: any) => {
+    setEditTarget(phase)
+    setForm({
+      title: phase.title,
+      description: phase.description ?? '',
+      startDate: phase.startDate ? phase.startDate.slice(0, 10) : '',
+      endDate: phase.endDate ? phase.endDate.slice(0, 10) : '',
+    })
+  }
 
   const hasOutdated = phases.some(p => p.outdated)
   const isAdmin = user?.role === 'ADMIN'
@@ -91,7 +128,7 @@ export default function TestExecutionPage() {
               return (
                 <div
                   key={phase.id}
-                  className="bg-white border rounded-lg p-4 hover:border-[#5E6AD2]/30 hover:shadow-sm cursor-pointer transition-all duration-200"
+                  className={`bg-white border border-l-4 ${STATUS_BORDER[phase.status] || 'border-l-gray-300'} rounded-lg p-4 hover:shadow-sm cursor-pointer transition-all duration-200`}
                   onClick={() => navigate(`/projects/${projectId}/test-execution/${phase.id}`)}
                 >
                   <div className="flex items-start justify-between mb-2">
@@ -101,9 +138,28 @@ export default function TestExecutionPage() {
                         <span className="text-amber-500 text-xs" title="시나리오 변경됨">⚠️</span>
                       )}
                     </div>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${STATUS_BADGE[phase.status] || 'bg-gray-100 text-gray-600'}`}>
-                      {STATUS_LABEL[phase.status] || phase.status}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${STATUS_BADGE[phase.status] || 'bg-gray-100 text-gray-600'}`}>
+                        {STATUS_LABEL[phase.status] || phase.status}
+                      </span>
+                      {isAdmin && (
+                          <button
+                            onClick={e => { e.stopPropagation(); openEdit(phase) }}
+                            className="p-1 text-gray-400 hover:text-[#5E6AD2] transition-colors"
+                            title="수정"
+                          ><Pencil size={13} /></button>
+                      )}
+                          <button
+                            onClick={e => {
+                              e.stopPropagation()
+                              if (confirm(`"${phase.title}" 회차를 삭제하시겠습니까?\n수행 기록도 모두 삭제됩니다.`)) {
+                                deleteMutation.mutate(phase.id)
+                              }
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                            title="삭제"
+                          ><Trash2 size={13} /></button>
+                    </div>
                   </div>
                   <h3 className="text-xs font-medium text-gray-800 mb-2 truncate">{phase.title}</h3>
                   <div className="flex items-center justify-between text-[10px] text-gray-400">
@@ -132,30 +188,42 @@ export default function TestExecutionPage() {
           </div>
           <div className="space-y-1">
             <Label>설명</Label>
-            <textarea
-              className="w-full border rounded-md px-3 py-2 text-sm resize-none"
-              rows={2}
-              value={form.description}
-              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-            />
+            <textarea className="w-full border rounded-md px-3 py-2 text-sm resize-none" rows={2}
+              value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label>시작일</Label>
-              <Input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} />
-            </div>
-            <div className="space-y-1">
-              <Label>종료일</Label>
-              <Input type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} />
-            </div>
+            <div className="space-y-1"><Label>시작일</Label><Input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} /></div>
+            <div className="space-y-1"><Label>종료일</Label><Input type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} /></div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setShowCreate(false)}>{t('common.cancel')}</Button>
-            <Button
-              disabled={!form.title || createMutation.isPending}
+            <Button disabled={!form.title || createMutation.isPending}
               disabledReason={!form.title ? '제목을 입력하세요' : '처리 중입니다...'}
-              onClick={() => createMutation.mutate()}
-            >{t('common.save')}</Button>
+              onClick={() => createMutation.mutate()}>{t('common.save')}</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={!!editTarget} onClose={() => { setEditTarget(null); setForm({ title: '', description: '', startDate: '', endDate: '' }) }} title="프로젝트 회차 수정" className="max-w-lg">
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label>제목 *</Label>
+            <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+          </div>
+          <div className="space-y-1">
+            <Label>설명</Label>
+            <textarea className="w-full border rounded-md px-3 py-2 text-sm resize-none" rows={2}
+              value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1"><Label>시작일</Label><Input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} /></div>
+            <div className="space-y-1"><Label>종료일</Label><Input type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} /></div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => { setEditTarget(null); setForm({ title: '', description: '', startDate: '', endDate: '' }) }}>{t('common.cancel')}</Button>
+            <Button disabled={!form.title || updateMutation.isPending}
+              disabledReason={!form.title ? '제목을 입력하세요' : '처리 중입니다...'}
+              onClick={() => updateMutation.mutate()}>{t('common.save')}</Button>
           </div>
         </div>
       </Modal>

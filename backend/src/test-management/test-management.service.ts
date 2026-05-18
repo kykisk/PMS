@@ -68,7 +68,7 @@ export class TestManagementService {
     }
   }
 
-  async findAllScenarios(projectId: string, query: { reqId?: string; featureId?: string; type?: string; testType?: string; search?: string; page?: number; limit?: number }) {
+  async findAllScenarios(projectId: string, query: { reqId?: string; featureId?: string; type?: string; testType?: string; search?: string; page?: number; limit?: number; withCases?: boolean }) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(2000, query.limit ?? 50);
     const skip = (page - 1) * limit;
@@ -91,6 +91,7 @@ export class TestManagementService {
           feature: { select: { id: true, code: true, title: true, reqId: true,
             requirement: { select: { id: true, code: true, title: true } } } },
           _count: { select: { testCases: true } },
+          ...(query.withCases ? { testCases: { select: { id: true, title: true, priority: true }, orderBy: { createdAt: 'asc' as const } } } : {}),
         },
         orderBy: { createdAt: 'asc' },
         skip,

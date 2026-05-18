@@ -59,8 +59,17 @@ export const testExecutionApi = {
     apiClient.get<TesterSuggestion[]>(`/projects/${projectId}/test-phases/testers`).then(r => r.data),
   getDashboard: (projectId: string, phaseId: string) =>
     apiClient.get(`/projects/${projectId}/test-phases/${phaseId}/dashboard`).then(r => r.data),
-  exportTemplate: (projectId: string, phaseId: string) => {
-    window.open(`/api/v1/projects/${projectId}/test-phases/${phaseId}/export-template`, '_blank')
+  exportTemplate: async (projectId: string, phaseId: string) => {
+    const store = JSON.parse(localStorage.getItem('pms-auth') || '{}')
+    const token = store?.state?.accessToken ?? ''
+    const res = await fetch(`/api/v1/projects/${projectId}/test-phases/${phaseId}/export-template`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error('Template 다운로드 실패')
+    const blob = await res.blob()
+    const url = URL.createObjectURL(new Blob([await blob.arrayBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+    const a = document.createElement('a'); a.href = url; a.download = 'test-template.xlsx'; a.click()
+    URL.revokeObjectURL(url)
   },
   importResults: (projectId: string, phaseId: string, file: File) => {
     const form = new FormData()
@@ -69,7 +78,16 @@ export const testExecutionApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data)
   },
-  exportResult: (projectId: string, phaseId: string) => {
-    window.open(`/api/v1/projects/${projectId}/test-phases/${phaseId}/export-result`, '_blank')
+  exportResult: async (projectId: string, phaseId: string) => {
+    const store = JSON.parse(localStorage.getItem('pms-auth') || '{}')
+    const token = store?.state?.accessToken ?? ''
+    const res = await fetch(`/api/v1/projects/${projectId}/test-phases/${phaseId}/export-result`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error('결과서 Export 실패')
+    const blob = await res.blob()
+    const url = URL.createObjectURL(new Blob([await blob.arrayBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+    const a = document.createElement('a'); a.href = url; a.download = 'test-result-report.xlsx'; a.click()
+    URL.revokeObjectURL(url)
   },
 }

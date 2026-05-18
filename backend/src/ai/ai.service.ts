@@ -357,7 +357,12 @@ ${reqList}${existingList}${additionalInfo ? `\n\n=== 추가 지시사항 ===\n${
     catch { return [{ _rawText: text, _parseError: true }]; }
   }
 
-  async generateTestScenarios(context: { requirement?: { title: string; description?: string }; feature?: { title: string; description?: string } }, userId?: string, modelId?: string, additionalInfo?: string, detailLevel?: number): Promise<any[]> {
+  async generateTestScenarios(context: {
+    requirement?: { title: string; description?: string };
+    feature?: { title: string; description?: string };
+    features?: { code: string; title: string; description?: string }[];
+    tasks?: { code: string; title: string; description?: string }[];
+  }, userId?: string, modelId?: string, additionalInfo?: string, detailLevel?: number): Promise<any[]> {
     const model = await this.getModel(userId, modelId);
     const config = await this.adminService.getActiveLLMConfig();
     const count = detailLevel ?? 5
@@ -366,10 +371,16 @@ ${reqList}${existingList}${additionalInfo ? `\n\n=== 추가 지시사항 ===\n${
       : count <= 7
         ? `주요 흐름을 포함하여 ${count}개 내외로`
         : `경계값, 예외, 보안 케이스까지 포함하여 ${count}개 내외로 상세하게`
+    const featureList = (context.features?.length ?? 0) > 0
+      ? `\n\n=== 연결된 기능 목록 ===\n${context.features!.map(f => `[${f.code}] ${f.title}${f.description ? ` - ${f.description}` : ''}`).join('\n')}`
+      : ''
+    const taskList = (context.tasks?.length ?? 0) > 0
+      ? `\n\n=== 연결된 Task 목록 ===\n${context.tasks!.map(t => `[${t.code}] ${t.title}${t.description ? ` - ${t.description}` : ''}`).join('\n')}`
+      : ''
     const { text } = await generateText({
       model,
       system: this.getPrompt(config, 'generateTestScenarios'),
-      prompt: `요구사항: ${context.requirement?.title ?? ''}\n기능: ${context.feature?.title ?? ''}\n설명: ${context.requirement?.description ?? context.feature?.description ?? ''}\n\n[생성 개수 지침] ${countGuide} 시나리오를 도출해주세요.${additionalInfo ? `\n\n추가 지시사항:\n${additionalInfo}` : ''}`,
+      prompt: `요구사항: ${context.requirement?.title ?? ''}\n설명: ${context.requirement?.description ?? context.feature?.description ?? ''}${featureList}${taskList}\n\n[생성 개수 지침] ${countGuide} 시나리오를 도출해주세요. 위 기능과 Task를 고려하여 구체적이고 실행 가능한 테스트 시나리오를 작성해주세요.${additionalInfo ? `\n\n추가 지시사항:\n${additionalInfo}` : ''}`,
       maxOutputTokens: 8000,
     });
     try { return this.parseJSON(text); }
@@ -611,8 +622,15 @@ ${reqList}${existingList}${additionalInfo ? `\n\n=== 추가 지시사항 ===\n${
     userId?: string,
     modelId?: string,
     additionalInfo?: string,
+    detailLevel?: number,
   ): Promise<any[]> {
     const model = await this.getModel(userId, modelId);
+    const count = detailLevel ?? 6
+    const countGuide = count <= 3
+      ? `핵심 케이스 ${count}개 이내 (정상/비정상 대표만)`
+      : count <= 7
+        ? `${count}개 내외 (정상, 예외, 경계값 포함)`
+        : `${count}개 내외로 상세하게 (정상, 예외, 경계값, 보안, 에러 케이스 포함)`
     const { text } = await generateText({
       model,
       system: `당신은 소프트웨어 QA 전문가입니다. 테스트 시나리오에서 구체적인 테스트 케이스를 도출하세요.
@@ -623,7 +641,7 @@ ${reqList}${existingList}${additionalInfo ? `\n\n=== 추가 지시사항 ===\n${
   "testData": "입력 데이터",
   "expected": "기대 결과"
 }]
-4~8개의 케이스를 도출하세요: 정상 케이스, 예외 케이스, 경계값 케이스, 에러 케이스 포함
+[생성 개수 지침] ${countGuide}
 반드시 유효한 JSON 배열만 출력`,
       prompt: `시나리오: ${scenario.title}\n설명: ${scenario.description ?? ''}\n레벨: ${scenario.type ?? 'integration'}${additionalInfo ? `\n\n추가 지시사항:\n${additionalInfo}` : ''}`,
       maxOutputTokens: 8000,

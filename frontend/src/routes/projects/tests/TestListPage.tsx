@@ -17,6 +17,7 @@ import AppLayout from '@/components/layout/AppLayout'
 import { TraceIndicator } from '@/components/shared/TraceIndicator'
 import { FeatureScenarioUpdateModal } from '@/components/shared/FeatureScenarioUpdateModal'
 import { MultiScenarioGenerateModal } from '@/components/shared/MultiScenarioGenerateModal'
+import { MultiCaseGenerateModal } from '@/components/shared/MultiCaseGenerateModal'
 
 const STATUSES = ['draft', 'ready', 'in_progress', 'completed']
 const STATUS_LABELS: Record<string, string> = { draft: '초안', ready: '준비', in_progress: '진행중', completed: '완료' }
@@ -40,6 +41,7 @@ export default function TestListPage() {
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
   const [filterTestType, setFilterTestType] = useState('')
+  const [viewMode, setViewMode] = useState<'grouped' | 'flat'>('grouped')
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', testData: '', reqId: '' })
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -47,6 +49,7 @@ export default function TestListPage() {
   const [allExpanded, setAllExpanded] = useState(true)
   const [updateTarget, setUpdateTarget] = useState<{ id: string; code: string; title: string } | null>(null)
   const [showMultiGen, setShowMultiGen] = useState(false)
+  const [showMultiCase, setShowMultiCase] = useState(false)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [panelEditing, setPanelEditing] = useState(false)
   const [panelEditForm, setPanelEditForm] = useState<any>({})
@@ -75,9 +78,16 @@ export default function TestListPage() {
   const { data: result, isLoading } = useQuery({
     queryKey: ['scenarios', projectId, search, filterTestType],
     queryFn: () => testApi.listScenarios(projectId!, { search: search || undefined, testType: filterTestType || undefined, limit: 2000 }),
-    enabled: !!projectId,
+    enabled: !!projectId && viewMode === 'grouped',
   })
   const scenarios = result?.data ?? []
+
+  const { data: flatResult, isLoading: flatLoading } = useQuery({
+    queryKey: ['scenarios-flat', projectId, search, filterTestType],
+    queryFn: () => testApi.listScenarios(projectId!, { search: search || undefined, testType: filterTestType || undefined, limit: 2000, withCases: true } as any),
+    enabled: !!projectId && viewMode === 'flat',
+  })
+  const flatScenarios = flatResult?.data ?? []
   const { data: aiStatus } = useQuery({ queryKey: ['ai-status', projectId], queryFn: () => aiStatusApi.check(projectId!), enabled: !!projectId })
   const { data: reqResult = undefined } = useQuery({ queryKey: ['requirements', projectId], queryFn: () => requirementApi.list(projectId!, { limit: 500 }), enabled: !!projectId, staleTime: 5 * 60 * 1000 })
   const requirements = reqResult?.data ?? []
@@ -145,25 +155,33 @@ export default function TestListPage() {
 
   return (
     <AppLayout>
-      <div className="p-4">
-        <div className="flex justify-between items-center mb-3">
-          <div className="flex items-center gap-3">
-            <h2 className="text-sm font-bold text-gray-800">{t('nav.tests')}</h2>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => exportApi.testPlan(projectId!)}><Download size={12} />계획서 Excel</Button>
-            <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => exportApi.testPlanPdf(projectId!)}><Download size={12} />계획서 PDF</Button>
-            <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => exportApi.testResultPivot(projectId!)}><Download size={12} />결과서 Excel</Button>
-            {aiStatus?.configured && (
-              <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setShowMultiGen(true)}>
-                <Sparkles size={12} />AI 시나리오 생성
-              </Button>
-            )}
-            <Button size="sm" className="h-7 text-xs px-2" onClick={() => setShowCreate(true)}><Plus size={12} />{t('common.create')}</Button>
+      <div className="flex flex-col">
+        <div className="flex-shrink-0 px-4 pt-4 pb-2">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-bold text-gray-800">{t('nav.tests')}</h2>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => exportApi.testPlan(projectId!)}><Download size={12} />계획서 Excel</Button>
+              <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => exportApi.testPlanPdf(projectId!)}><Download size={12} />계획서 PDF</Button>
+              <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => exportApi.testResultPivot(projectId!)}><Download size={12} />결과서 Excel</Button>
+              {aiStatus?.configured && (
+                <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setShowMultiGen(true)}>
+                  <Sparkles size={12} />AI 시나리오 생성
+                </Button>
+              )}
+              {aiStatus?.configured && (
+                <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setShowMultiCase(true)}>
+                  <Sparkles size={12} />AI 케이스 생성
+                </Button>
+              )}
+              <Button size="sm" className="h-7 text-xs px-2" onClick={() => setShowCreate(true)}><Plus size={12} />{t('common.create')}</Button>
+            </div>
           </div>
         </div>
 
-        <div className="flex gap-2 mb-3">
+        <div className="flex-shrink-0 px-4 py-2">
+          <div className="flex gap-2 mb-2">
               <div className="relative flex-1 max-w-xs">
                 <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
                 <Input className="pl-7 h-7 text-xs" placeholder={t('common.search')} value={search} onChange={e => { setSearch(e.target.value); setSelected(new Set()) }} />
@@ -176,43 +194,56 @@ export default function TestListPage() {
                 <option value="usability">사용성</option>
                 <option value="compatibility">호환성</option>
               </select>
+              <div className="inline-flex border border-gray-200 rounded-md overflow-hidden text-xs h-7">
+                <button
+                  className={`px-3 flex items-center transition-colors ${viewMode === 'grouped' ? 'bg-[#5E6AD2] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                  onClick={() => { setViewMode('grouped'); setSelected(new Set()) }}
+                >요구사항별</button>
+                <button
+                  className={`px-3 flex items-center border-l border-gray-200 transition-colors ${viewMode === 'flat' ? 'bg-[#5E6AD2] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                  onClick={() => { setViewMode('flat'); setSelected(new Set()) }}
+                >테스트 시나리오</button>
+              </div>
+          </div>
+
+          {selected.size > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg mb-2">
+              <span className="text-xs text-blue-700 font-medium">{selected.size}개 선택됨</span>
+              <select className="h-7 text-xs border rounded px-2" defaultValue="" onChange={e => {
+                const status = e.target.value
+                if (!status) return
+                if (confirm(`선택한 ${selected.size}개를 "${STATUS_LABELS[status]}"으로 변경하시겠습니까?`)) {
+                  bulkStatusMutation.mutate({ ids: [...selected], status })
+                }
+                e.target.value = ''
+              }}>
+                <option value="">상태변경...</option>
+                {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+              </select>
+              <button
+                onClick={() => { if (confirm(`선택한 ${selected.size}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate([...selected]) }}
+                className="text-xs px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
+              >선택 삭제</button>
+              <button
+                onClick={() => { if (confirm(`전체 ${scenarios.length}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate(scenarios.map(i => i.id)) }}
+                className="text-xs px-2 py-0.5 border border-red-400 text-red-600 rounded hover:bg-red-50"
+              >전체 삭제</button>
+              <button onClick={() => setSelected(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">취소</button>
             </div>
+          )}
+        </div>
 
-            {selected.size > 0 && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg mb-2">
-                <span className="text-xs text-blue-700 font-medium">{selected.size}개 선택됨</span>
-                <select className="h-7 text-xs border rounded px-2" defaultValue="" onChange={e => {
-                  const status = e.target.value
-                  if (!status) return
-                  if (confirm(`선택한 ${selected.size}개를 "${STATUS_LABELS[status]}"으로 변경하시겠습니까?`)) {
-                    bulkStatusMutation.mutate({ ids: [...selected], status })
-                  }
-                  e.target.value = ''
-                }}>
-                  <option value="">상태변경...</option>
-                  {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
-                </select>
-                <button
-                  onClick={() => { if (confirm(`선택한 ${selected.size}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate([...selected]) }}
-                  className="text-xs px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
-                >선택 삭제</button>
-                <button
-                  onClick={() => { if (confirm(`전체 ${scenarios.length}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate(scenarios.map(i => i.id)) }}
-                  className="text-xs px-2 py-0.5 border border-red-400 text-red-600 rounded hover:bg-red-50"
-                >전체 삭제</button>
-                <button onClick={() => setSelected(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">취소</button>
-              </div>
-            )}
-
-            {isLoading ? (
-              <div className="bg-white rounded-lg border p-6">
-                <TableSkeleton rows={5} cols={6} />
-              </div>
-            ) : scenarios.length === 0 ? (
-              <div className="bg-white rounded-lg border">
-                <EmptyState message="테스트 시나리오가 없습니다. 새로 생성해보세요." />
-              </div>
-            ) : (() => {
+        <div className="overflow-y-auto px-4 pb-4" style={{ maxHeight: "calc(100vh - 140px)" }}>
+            {viewMode === 'grouped'
+              ? isLoading ? (
+                <div className="bg-white rounded-lg border p-6">
+                  <TableSkeleton rows={5} cols={6} />
+                </div>
+              ) : scenarios.length === 0 ? (
+                <div className="bg-white rounded-lg border">
+                  <EmptyState message="테스트 시나리오가 없습니다. 새로 생성해보세요." />
+                </div>
+              ) : (() => {
               const grouped: Record<string, { label: string; code: string; scenarios: typeof scenarios }> = {}
               scenarios.forEach(s => {
                 const req = (s as any).requirement || (s as any).feature?.requirement || null
@@ -255,8 +286,8 @@ export default function TestListPage() {
                       <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">코드</th>
                       <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px]">시나리오명</th>
                       <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-16">유형</th>
-                      <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-16">케이스</th>
-                      <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">결과</th>
+                       <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-16">케이스</th>
+                       <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-20">상태</th>
                       <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-20">연결</th>
                       <th className="w-20 px-3 py-1.5"></th>
                     </tr>
@@ -284,11 +315,8 @@ export default function TestListPage() {
                               </div>
                            </td>
                          </tr>
-                        {isExpanded(key) && group.scenarios.map(s => {
-                          const cases = s.testCases ?? []
-                          const passed = cases.filter((c: any) => c.result === 'pass').length
-                          const failed = cases.filter((c: any) => c.result === 'fail').length
-                          return (
+                         {isExpanded(key) && group.scenarios.map(s => {
+                           return (
                             <tr key={s.id} className={`border-b hover:bg-gray-50 cursor-pointer transition-colors duration-200 ${selectedItemId === s.id ? 'bg-[#5E6AD2]/5' : ''}`} onClick={() => setSelectedItemId(prev => prev === s.id ? null : s.id)}>
                               <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
                                 <input type="checkbox"
@@ -306,16 +334,15 @@ export default function TestListPage() {
                                   {TYPE_LABEL[(s as any).testType] || (s as any).testType || '-'}
                                 </span>
                               </td>
-                              <td className="px-3 py-1.5 text-gray-500">{s._count?.testCases ?? 0}</td>
-                              <td className="px-3 py-1.5">
-                                <div className="flex items-center gap-2 text-xs">
-                                  {cases.length > 0 ? <>
-                                    <span className="text-green-600">{passed}✅</span>
-                                    <span className="text-red-600">{failed}❌</span>
-                                    <span className="text-gray-400">{cases.length - passed - failed}⬜</span>
-                                  </> : <span className="text-gray-400">-</span>}
-                                </div>
-                              </td>
+                               <td className="px-3 py-1.5 text-gray-500">{s._count?.testCases ?? 0}</td>
+                               <td className="px-3 py-1.5">
+                                 <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                                   (s as any).status === 'completed' ? 'bg-green-100 text-green-700' :
+                                   (s as any).status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                                   (s as any).status === 'ready' ? 'bg-indigo-100 text-indigo-700' :
+                                   'bg-gray-100 text-gray-500'
+                                 }`}>{STATUS_LABELS[(s as any).status] || (s as any).status || '초안'}</span>
+                               </td>
                               <td className="px-3 py-1.5">
                                 <TraceIndicator
                                   upper={[
@@ -431,8 +458,26 @@ export default function TestListPage() {
                     )}
 
                     <div className="border-t pt-2">
-                      <span className="text-gray-500 font-medium block mb-1">케이스 수</span>
-                      <p className="text-gray-700">{selectedItem._count?.testCases ?? 0}건</p>
+                      <span className="text-gray-500 font-medium block mb-1.5">
+                        테스트 케이스 ({((selectedItem as any).testCases?.length ?? selectedItem._count?.testCases ?? 0)}건)
+                      </span>
+                      {(selectedItem as any).testCases && (selectedItem as any).testCases.length > 0 ? (
+                        <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                          {(selectedItem as any).testCases.map((tc: any, idx: number) => (
+                            <div key={tc.id} className="flex items-start gap-2 py-1 border-b border-gray-50 last:border-0">
+                              <span className="text-[9px] text-gray-400 font-mono flex-shrink-0 mt-0.5 w-5">{String(idx + 1).padStart(2, '0')}</span>
+                              <span className={`flex-shrink-0 text-[9px] px-1 py-0.5 rounded mt-0.5 font-medium ${
+                                tc.priority === 'high' ? 'bg-red-50 text-red-600' :
+                                tc.priority === 'low' ? 'bg-gray-50 text-gray-400' :
+                                'bg-yellow-50 text-yellow-600'
+                              }`}>{tc.priority === 'high' ? '상' : tc.priority === 'low' ? '하' : '중'}</span>
+                              <span className="text-[11px] text-gray-700 leading-relaxed">{tc.title}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-gray-400">케이스 없음</p>
+                      )}
                     </div>
                   </div>
 
@@ -448,9 +493,67 @@ export default function TestListPage() {
               )}
               </div>
               )
-            })()}
+            })()
+            : null}
         <div className="py-3 text-center text-[11px] text-gray-400">
-          {scenarios.length > 0 ? `총 ${scenarios.length}개` : ''}
+          {viewMode === 'grouped' && scenarios.length > 0 ? `총 ${scenarios.length}개` : ''}
+        </div>
+
+        {viewMode === 'flat' && (
+          flatLoading ? (
+            <div className="bg-white rounded-lg border p-6"><TableSkeleton rows={5} cols={3} /></div>
+          ) : (
+            <div className="bg-white rounded-lg border overflow-hidden">
+              <div className="px-3 py-1.5 bg-gray-50 border-b text-[11px] text-gray-500 font-medium">
+                총 {flatScenarios.length}개 시나리오
+              </div>
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500 w-28">시나리오 ID</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500 w-64">시나리오명</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">Test Case</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {flatScenarios.map((s: any) => (
+                    <tr key={s.id} className="border-b hover:bg-gray-50 cursor-pointer align-top" onClick={() => setSelectedItemId(prev => prev === s.id ? null : s.id)}>
+                      <td className="px-3 py-2 font-mono text-[#5E6AD2] align-top">{s.code}</td>
+                      <td className="px-3 py-2 font-medium text-gray-800 align-top">
+                        <p>{s.title}</p>
+                        {s.requirement && <p className="text-[10px] text-gray-400 mt-0.5">{s.requirement.code} {s.requirement.title}</p>}
+                      </td>
+                      <td className="px-3 py-2 text-gray-600 align-top">
+                        {s.testCases && s.testCases.length > 0 ? (
+                          <div className="space-y-0.5">
+                            {s.testCases.map((tc: any, idx: number) => (
+                              <div key={tc.id} className="flex items-start gap-1.5">
+                                <span className="text-[9px] text-gray-400 font-mono flex-shrink-0 mt-0.5">{String(idx + 1).padStart(2, '0')}</span>
+                                <span className={`flex-shrink-0 text-[9px] px-1 rounded mt-0.5 ${tc.priority === 'high' ? 'bg-red-50 text-red-600' : tc.priority === 'low' ? 'bg-gray-50 text-gray-400' : 'bg-yellow-50 text-yellow-600'}`}>
+                                  {tc.priority === 'high' ? '상' : tc.priority === 'low' ? '하' : '중'}
+                                </span>
+                                <span>{tc.title}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-300">케이스 없음</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {flatScenarios.length === 0 && (
+                    <tr><td colSpan={3} className="px-3 py-8 text-center text-gray-400">테스트 시나리오가 없습니다</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+
+        <div className="py-3 text-center text-[11px] text-gray-400">
+          {viewMode === 'grouped' && scenarios.length > 0 ? `총 ${scenarios.length}개` : ''}
+        </div>
         </div>
       </div>
 
@@ -488,6 +591,12 @@ export default function TestListPage() {
         />
       )}
       <MultiScenarioGenerateModal open={showMultiGen} onClose={() => setShowMultiGen(false)} projectId={projectId!} />
+      <MultiCaseGenerateModal
+        open={showMultiCase}
+        onClose={() => setShowMultiCase(false)}
+        projectId={projectId!}
+        preSelectedIds={selected.size > 0 ? [...selected] : undefined}
+      />
     </AppLayout>
   )
 }

@@ -36,6 +36,7 @@ export class TestManagementController {
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'withCases', required: false })
   findAllScenarios(
     @Param('projectId') pid: string,
     @Query('reqId') reqId?: string,
@@ -45,8 +46,9 @@ export class TestManagementController {
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('withCases') withCases?: string,
   ) {
-    return this.svc.findAllScenarios(pid, { reqId, featureId, type, testType, search, page: page ? +page : undefined, limit: limit ? +limit : undefined });
+    return this.svc.findAllScenarios(pid, { reqId, featureId, type, testType, search, page: page ? +page : undefined, limit: limit ? +limit : undefined, withCases: withCases === 'true' });
   }
 
   @Get('test-scenarios/:sId')

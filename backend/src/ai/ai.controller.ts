@@ -126,8 +126,20 @@ export class AIController {
     });
     if (!reqs.length) return { error: '요구사항을 찾을 수 없습니다.' };
     const results = await Promise.all(reqs.map(async r => {
+      const features = await this.prisma.feature.findMany({
+        where: { projectId: pid, reqId: r.id },
+        select: { code: true, title: true, description: true },
+      });
+      const tasks = await this.prisma.task.findMany({
+        where: { projectId: pid, feature: { reqId: r.id } },
+        select: { code: true, title: true, description: true },
+      });
       const items = await this.aiService.generateTestScenarios(
-        { requirement: { title: r.title, description: r.description ?? undefined } },
+        {
+          requirement: { title: r.title, description: r.description ?? undefined },
+          features: features.map(f => ({ code: f.code, title: f.title, description: f.description ?? undefined })),
+          tasks: tasks.map(t => ({ code: t.code, title: t.title, description: t.description ?? undefined })),
+        },
         req.user?.id, body.modelId, (body as any).additionalInfo, body.detailLevel,
       ).catch(() => []);
       return (items as any[]).map(item => ({
@@ -193,9 +205,20 @@ export class AIController {
       body.requirementId ? this.prisma.requirement.findFirst({ where: { id: body.requirementId, projectId: pid } }) : null,
       body.featureId ? this.prisma.feature.findFirst({ where: { id: body.featureId, projectId: pid } }) : null,
     ]);
+    const reqId = body.requirementId || (feat as any)?.reqId;
+    const features = reqId ? await this.prisma.feature.findMany({
+      where: { projectId: pid, reqId },
+      select: { code: true, title: true, description: true },
+    }) : [];
+    const tasks = reqId ? await this.prisma.task.findMany({
+      where: { projectId: pid, feature: { reqId } },
+      select: { code: true, title: true, description: true },
+    }) : [];
     return this.aiService.generateTestScenarios({
       requirement: requirement ? { title: requirement.title, description: requirement.description ?? undefined } : undefined,
       feature: feat ? { title: feat.title, description: feat.description ?? undefined } : undefined,
+      features: features.map(f => ({ code: f.code, title: f.title, description: f.description ?? undefined })),
+      tasks: tasks.map(t => ({ code: t.code, title: t.title, description: t.description ?? undefined })),
     }, req.user?.id, body.modelId, (body as any).additionalInfo, body.detailLevel);
   }
 
@@ -394,7 +417,7 @@ export class AIController {
   @Post('generate-test-cases')
   @ApiOperation({ summary: '테스트 시나리오 → 케이스 AI 자동 생성' })
   async generateTestCases(
-    @Body() body: { scenarioId: string; modelId?: string; additionalInfo?: string },
+    @Body() body: { scenarioId: string; modelId?: string; additionalInfo?: string; detailLevel?: number },
     @Param('projectId') pid: string,
     @Req() req: any,
   ) {
@@ -402,10 +425,36 @@ export class AIController {
     if (!scenario) return { error: '시나리오를 찾을 수 없습니다.' };
     return this.aiService.generateTestCases(
       { title: scenario.title, description: scenario.description ?? undefined, type: scenario.type },
-      req.user?.id,
-      body.modelId,
-      body.additionalInfo,
+      req.user?.id, body.modelId, body.additionalInfo, body.detailLevel,
     );
+  }
+
+  @Post('generate-test-cases-multi')
+  @ApiOperation({ summary: '여러 시나리오 → 케이스 다중 AI 자동 생성' })
+  async generateTestCasesMulti(
+    @Body() body: { scenarioIds: string[]; modelId?: string; additionalInfo?: string; detailLevel?: number },
+    @Param('projectId') pid: string,
+    @Req() req: any,
+  ) {
+    if (!body.scenarioIds?.length) return { error: '시나리오를 선택하세요.' };
+    const scenarios = await this.prisma.testScenario.findMany({
+      where: { id: { in: body.scenarioIds }, projectId: pid },
+      select: { id: true, code: true, title: true, description: true, type: true },
+    });
+    if (!scenarios.length) return { error: '시나리오를 찾을 수 없습니다.' };
+    const results = await Promise.all(scenarios.map(async s => {
+      const items = await this.aiService.generateTestCases(
+        { title: s.title, description: s.description ?? undefined, type: s.type },
+        req.user?.id, body.modelId, body.additionalInfo, body.detailLevel,
+      ).catch(() => []);
+      return (items as any[]).map(item => ({
+        ...item,
+        _scenarioId: s.id,
+        _scenarioCode: s.code,
+        _scenarioTitle: s.title,
+      }));
+    }));
+    return results.flat();
   }
 
   @Post('classify-defect')

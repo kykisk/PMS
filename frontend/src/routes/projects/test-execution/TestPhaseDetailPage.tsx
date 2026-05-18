@@ -1,15 +1,11 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, AlertTriangle, Download, Upload, Plus, Trash2, RefreshCw } from 'lucide-react'
+import { ChevronLeft, AlertTriangle, Download, Upload, Trash2, RefreshCw } from 'lucide-react'
 import { testExecutionApi, type TestPhase } from '@/api/test-execution.api'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Modal } from '@/components/shared/Modal'
 import { TableSkeleton } from '@/components/shared/Skeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
-import { TesterAutocomplete } from '@/components/shared/TesterAutocomplete'
 import { ImportResultModal } from './ImportResultModal'
 import AppLayout from '@/components/layout/AppLayout'
 
@@ -22,9 +18,7 @@ export default function TestPhaseDetailPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [tab, setTab] = useState<'rounds' | 'dashboard'>('rounds')
-  const [showRoundModal, setShowRoundModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
-  const [roundForm, setRoundForm] = useState({ testerName: '', testerDept: '', executedAt: '', scope: 'full', sourceRoundId: '' })
 
   const { data: phase, isLoading } = useQuery({
     queryKey: ['test-phase', projectId, phaseId],
@@ -46,7 +40,10 @@ export default function TestPhaseDetailPage() {
 
   const updatePhaseMutation = useMutation({
     mutationFn: (data: Partial<TestPhase>) => testExecutionApi.updatePhase(projectId!, phaseId!, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['test-phase', projectId, phaseId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['test-phase', projectId, phaseId] })
+      qc.invalidateQueries({ queryKey: ['test-phases', projectId] })
+    },
   })
 
   const refreshMutation = useMutation({
@@ -54,22 +51,6 @@ export default function TestPhaseDetailPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['test-phase', projectId, phaseId] })
       qc.invalidateQueries({ queryKey: ['test-phases', projectId] })
-    },
-  })
-
-  const createRoundMutation = useMutation({
-    mutationFn: () => testExecutionApi.createRound(projectId!, phaseId!, {
-      testerName: roundForm.testerName,
-      testerDept: roundForm.testerDept || undefined,
-      executedAt: roundForm.executedAt || undefined,
-      scope: roundForm.scope,
-      sourceRoundId: roundForm.scope === 'partial' ? roundForm.sourceRoundId || undefined : undefined,
-    }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['test-rounds', projectId, phaseId] })
-      qc.invalidateQueries({ queryKey: ['test-phase', projectId, phaseId] })
-      setShowRoundModal(false)
-      setRoundForm({ testerName: '', testerDept: '', executedAt: '', scope: 'full', sourceRoundId: '' })
     },
   })
 
@@ -153,17 +134,13 @@ export default function TestPhaseDetailPage() {
           <>
             <div className="flex gap-2 mb-3">
               <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => testExecutionApi.exportTemplate(projectId!, phaseId!)}>
-                <Download size={12} />Template Export
+                <Download size={12} />Template 다운로드
               </Button>
-              <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setShowImportModal(true)}>
-                <Upload size={12} />Import
+              <Button size="sm" className="h-7 text-xs px-2" onClick={() => setShowImportModal(true)}>
+                <Upload size={12} />결과 Import
               </Button>
               <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => testExecutionApi.exportResult(projectId!, phaseId!)}>
                 <Download size={12} />결과서 Export
-              </Button>
-              <div className="flex-1" />
-              <Button size="sm" className="h-7 text-xs px-2" onClick={() => setShowRoundModal(true)}>
-                <Plus size={12} />수행 회차 추가
               </Button>
             </div>
 
@@ -172,8 +149,9 @@ export default function TestPhaseDetailPage() {
                 <TableSkeleton rows={4} cols={8} />
               </div>
             ) : rounds.length === 0 ? (
-              <div className="bg-white rounded-lg border">
-                <EmptyState message="수행 회차가 없습니다. 새 회차를 추가하세요." />
+              <div className="bg-white rounded-lg border p-8 text-center">
+                <p className="text-xs text-gray-400 mb-2">수행 결과가 없습니다.</p>
+                <p className="text-[11px] text-gray-300">Template을 다운받아 작성 후 Import하세요.</p>
               </div>
             ) : (
               <div className="bg-white rounded-lg border overflow-hidden">
@@ -181,10 +159,9 @@ export default function TestPhaseDetailPage() {
                   <thead className="bg-gray-50 border-b">
                     <tr>
                       <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-16">회차</th>
-                      <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-20">수행자</th>
+                      <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">수행자</th>
                       <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-20">부서</th>
                       <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">수행일</th>
-                      <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-16">범위</th>
                       <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-40">결과</th>
                       <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-32">Pass율</th>
                       <th className="w-12 px-3 py-1.5"></th>
@@ -194,7 +171,6 @@ export default function TestPhaseDetailPage() {
                     {rounds.map(round => {
                       const total = round.totalCases || 1
                       const passRate = Math.round((round.passCount / total) * 100)
-                      const scopeLabel = round.scope === 'full' ? '전체' : round.scope === 'partial' ? 'Fail/Blocked' : round.scope
                       return (
                         <tr
                           key={round.id}
@@ -207,7 +183,6 @@ export default function TestPhaseDetailPage() {
                           <td className="px-3 py-1.5 text-xs text-gray-500">
                             {round.executedAt ? new Date(round.executedAt).toLocaleDateString('ko-KR') : '-'}
                           </td>
-                          <td className="px-3 py-1.5 text-xs text-gray-500">{scopeLabel}</td>
                           <td className="px-3 py-1.5">
                             <div className="flex items-center gap-1.5 text-[10px]">
                               <span className="text-green-600">P:{round.passCount}</span>
@@ -272,6 +247,7 @@ export default function TestPhaseDetailPage() {
                   return (
                     <div key={round.id} className="flex items-center gap-3">
                       <span className="text-xs text-gray-500 w-16">#{round.roundNumber}</span>
+                      <span className="text-xs text-gray-400 w-20 truncate">{round.testerName}</span>
                       <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
                         <div className="h-full bg-[#5E6AD2] rounded-full transition-all" style={{ width: `${passRate}%` }} />
                       </div>
@@ -309,68 +285,6 @@ export default function TestPhaseDetailPage() {
           </div>
         )}
       </div>
-
-      <Modal open={showRoundModal} onClose={() => setShowRoundModal(false)} title="수행 회차 추가" className="max-w-lg">
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <Label>수행자 이름 *</Label>
-            <TesterAutocomplete
-              projectId={projectId!}
-              value={roundForm.testerName}
-              onChange={(name, dept) => setRoundForm(f => ({ ...f, testerName: name, testerDept: dept }))}
-              placeholder="수행자 이름"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>부서</Label>
-            <Input
-              value={roundForm.testerDept}
-              onChange={e => setRoundForm(f => ({ ...f, testerDept: e.target.value }))}
-              placeholder="개발팀"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>수행일</Label>
-            <Input type="date" value={roundForm.executedAt} onChange={e => setRoundForm(f => ({ ...f, executedAt: e.target.value }))} />
-          </div>
-          <div className="space-y-1">
-            <Label>범위</Label>
-            <div className="flex gap-3">
-              <label className="flex items-center gap-1.5 text-xs">
-                <input type="radio" name="scope" value="full" checked={roundForm.scope === 'full'} onChange={() => setRoundForm(f => ({ ...f, scope: 'full' }))} />
-                전체
-              </label>
-              <label className="flex items-center gap-1.5 text-xs">
-                <input type="radio" name="scope" value="partial" checked={roundForm.scope === 'partial'} onChange={() => setRoundForm(f => ({ ...f, scope: 'partial' }))} />
-                이전 Fail/Blocked만
-              </label>
-            </div>
-          </div>
-          {roundForm.scope === 'partial' && rounds.length > 0 && (
-            <div className="space-y-1">
-              <Label>기준 회차</Label>
-              <select
-                className="w-full border rounded-md px-3 py-2 text-sm"
-                value={roundForm.sourceRoundId}
-                onChange={e => setRoundForm(f => ({ ...f, sourceRoundId: e.target.value }))}
-              >
-                <option value="">선택...</option>
-                {rounds.map(r => (
-                  <option key={r.id} value={r.id}>#{r.roundNumber} - {r.testerName} (Fail: {r.failCount}건)</option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setShowRoundModal(false)}>취소</Button>
-            <Button
-              disabled={!roundForm.testerName || createRoundMutation.isPending}
-              disabledReason={!roundForm.testerName ? '수행자를 입력하세요' : '처리 중입니다...'}
-              onClick={() => createRoundMutation.mutate()}
-            >저장</Button>
-          </div>
-        </div>
-      </Modal>
 
       <ImportResultModal
         open={showImportModal}

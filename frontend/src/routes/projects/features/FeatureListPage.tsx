@@ -189,57 +189,62 @@ export default function FeatureListPage() {
 
   return (
     <AppLayout>
-      <div className="p-4">
-        <div className="flex justify-between items-center mb-3">
-          <h2 className="text-sm font-bold text-gray-800">{t('nav.features')}</h2>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => setShowMultiGen(true)} disabled={!aiStatus?.configured} disabledReason="관리자 페이지에서 LLM을 설정하세요">
-              <Sparkles size={12} />AI 기능생성
-            </Button>
-            <Button size="sm" className="h-7 text-xs px-2" onClick={() => { setEditTarget(null); reset({ status: 'new' }); setShowCreate(true) }}>
-              <Plus size={12} />
-              {t('common.create')}
-            </Button>
+      <div className="flex flex-col">
+        <div className="flex-shrink-0 px-4 pt-4 pb-2">
+          <div className="flex justify-between items-center">
+            <h2 className="text-sm font-bold text-gray-800">{t('nav.features')}</h2>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => setShowMultiGen(true)} disabled={!aiStatus?.configured} disabledReason="관리자 페이지에서 LLM을 설정하세요">
+                <Sparkles size={12} />AI 기능생성
+              </Button>
+              <Button size="sm" className="h-7 text-xs px-2" onClick={() => { setEditTarget(null); reset({ status: 'new' }); setShowCreate(true) }}>
+                <Plus size={12} />
+                {t('common.create')}
+              </Button>
+            </div>
           </div>
         </div>
 
-        <div className="flex gap-2 mb-3">
-          <div className="relative flex-1 max-w-xs">
-            <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
-            <Input className="pl-7 h-7 text-xs" placeholder={t('common.search')} value={search} onChange={e => { setSearch(e.target.value); setSelected(new Set()) }} />
-          </div>
-          <select className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setSelected(new Set()) }}>
-            <option value="">상태 전체</option>
-            {STATUSES.map(s => <option key={s} value={s}>{t(`status.${s}`)}</option>)}
-          </select>
-        </div>
-
-        {selected.size > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg mb-2">
-            <span className="text-xs text-blue-700 font-medium">{selected.size}개 선택됨</span>
-            <select className="h-7 text-xs border rounded px-2" defaultValue="" onChange={e => {
-              const status = e.target.value
-              if (!status) return
-              if (confirm(`선택한 ${selected.size}개를 "${STATUS_LABELS[status]}"으로 변경하시겠습니까?`)) {
-                bulkStatusMutation.mutate({ ids: [...selected], status })
-              }
-              e.target.value = ''
-            }}>
-              <option value="">상태변경...</option>
-              {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+        <div className="flex-shrink-0 px-4 py-2">
+          <div className="flex gap-2 mb-2">
+            <div className="relative flex-1 max-w-xs">
+              <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Input className="pl-7 h-7 text-xs" placeholder={t('common.search')} value={search} onChange={e => { setSearch(e.target.value); setSelected(new Set()) }} />
+            </div>
+            <select className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setSelected(new Set()) }}>
+              <option value="">상태 전체</option>
+              {STATUSES.map(s => <option key={s} value={s}>{t(`status.${s}`)}</option>)}
             </select>
-            <button
-              onClick={() => { if (confirm(`선택한 ${selected.size}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate([...selected]) }}
-              className="text-xs px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
-            >선택 삭제</button>
-            <button
-              onClick={() => { if (confirm(`전체 ${features.length}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate(features.map(i => i.id)) }}
-              className="text-xs px-2 py-0.5 border border-red-400 text-red-600 rounded hover:bg-red-50"
-            >전체 삭제</button>
-            <button onClick={() => setSelected(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">취소</button>
           </div>
-        )}
 
+          {selected.size > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg mb-2">
+              <span className="text-xs text-blue-700 font-medium">{selected.size}개 선택됨</span>
+              <select className="h-7 text-xs border rounded px-2" defaultValue="" onChange={e => {
+                const status = e.target.value
+                if (!status) return
+                if (confirm(`선택한 ${selected.size}개를 "${STATUS_LABELS[status]}"으로 변경하시겠습니까?`)) {
+                  bulkStatusMutation.mutate({ ids: [...selected], status })
+                }
+                e.target.value = ''
+              }}>
+                <option value="">상태변경...</option>
+                {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+              </select>
+              <button
+                onClick={() => { if (confirm(`선택한 ${selected.size}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate([...selected]) }}
+                className="text-xs px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
+              >선택 삭제</button>
+              <button
+                onClick={() => { if (confirm(`전체 ${features.length}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate(features.map(i => i.id)) }}
+                className="text-xs px-2 py-0.5 border border-red-400 text-red-600 rounded hover:bg-red-50"
+              >전체 삭제</button>
+              <button onClick={() => setSelected(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">취소</button>
+            </div>
+          )}
+        </div>
+
+        <div className="overflow-y-auto px-4 pb-4" style={{ maxHeight: "calc(100vh - 140px)" }}>
         {isLoading ? (
           <div className="bg-white rounded-lg border p-6">
             <TableSkeleton rows={5} cols={6} />
@@ -499,6 +504,7 @@ export default function FeatureListPage() {
         })()}
         <div className="py-3 text-center text-[11px] text-gray-400">
           {features.length > 0 ? `총 ${features.length}개` : ''}
+        </div>
         </div>
       </div>
 

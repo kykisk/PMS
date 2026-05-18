@@ -209,119 +209,124 @@ export default function RequirementListPage() {
 
   return (
     <AppLayout>
-      <div className="p-4">
-        <div className="flex justify-between items-center mb-3">
-          <h2 className="text-sm font-bold text-gray-800">{t('nav.requirements')}</h2>
-          <div className="flex gap-2">
-            <div className="relative group">
-              <Button variant="outline" size="sm" className="h-7 text-xs px-2">
-                <Download size={12} />
-                내보내기
-                <ChevronDown size={12} />
-              </Button>
-              <div className="hidden group-hover:block absolute right-0 top-full mt-1 w-40 bg-white border rounded-lg shadow-lg z-20 py-1">
-                <button onClick={() => exportApi.requirements(projectId!)} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left">
-                  <Download size={14} />
-                  Excel
-                </button>
-                <button onClick={() => exportApi.requirementsPdf(projectId!)} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left">
-                  <Download size={14} />
-                  PDF
-                </button>
+      <div className="flex flex-col">
+        <div className="flex-shrink-0 px-4 pt-4 pb-2">
+          <div className="flex justify-between items-center">
+            <h2 className="text-sm font-bold text-gray-800">{t('nav.requirements')}</h2>
+            <div className="flex gap-2">
+              <div className="relative group">
+                <Button variant="outline" size="sm" className="h-7 text-xs px-2">
+                  <Download size={12} />
+                  내보내기
+                  <ChevronDown size={12} />
+                </Button>
+                <div className="hidden group-hover:block absolute right-0 top-full mt-1 w-40 bg-white border rounded-lg shadow-lg z-20 py-1">
+                  <button onClick={() => exportApi.requirements(projectId!)} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left">
+                    <Download size={14} />
+                    Excel
+                  </button>
+                  <button onClick={() => exportApi.requirementsPdf(projectId!)} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left">
+                    <Download size={14} />
+                    PDF
+                  </button>
+                </div>
               </div>
-            </div>
-            <div className="relative group">
-              <Button variant="outline" size="sm" className="h-7 text-xs px-2">
-                <FileUp size={12} />
-                가져오기
-                <ChevronDown size={12} />
-              </Button>
-              <div className="hidden group-hover:block absolute right-0 top-full mt-1 w-52 bg-white border rounded-lg shadow-lg z-20 py-1">
-                <button onClick={() => setShowImport(true)} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 w-full text-left">
+              <div className="relative group">
+                <Button variant="outline" size="sm" className="h-7 text-xs px-2">
                   <FileUp size={12} />
-                  엑셀 파일 Import
-                </button>
-                <div className="border-t my-1" />
-                <button onClick={() => setShowSpecImport(true)} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 w-full text-left">
-                  <Sparkles size={12} />
-                  기술서(엑셀) AI 분석
-                </button>
-                <button onClick={() => setShowSpecUpdate(true)} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 w-full text-left">
-                  <RefreshCw size={12} />
-                  기술서 변경점 비교 (diff)
-                </button>
+                  가져오기
+                  <ChevronDown size={12} />
+                </Button>
+                <div className="hidden group-hover:block absolute right-0 top-full mt-1 w-52 bg-white border rounded-lg shadow-lg z-20 py-1">
+                  <button onClick={() => setShowImport(true)} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 w-full text-left">
+                    <FileUp size={12} />
+                    엑셀 파일 Import
+                  </button>
+                  <div className="border-t my-1" />
+                  <button onClick={() => setShowSpecImport(true)} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 w-full text-left">
+                    <Sparkles size={12} />
+                    기술서(엑셀) AI 분석
+                  </button>
+                  <button onClick={() => setShowSpecUpdate(true)} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 w-full text-left">
+                    <RefreshCw size={12} />
+                    기술서 변경점 비교 (diff)
+                  </button>
+                </div>
               </div>
+              <Button size="sm" className="h-7 text-xs px-2" onClick={() => { setEditTarget(null); reset({ priority: 'medium', status: 'new' }); setShowCreate(true) }}>
+                <Plus size={12} />
+                {t('common.create')}
+              </Button>
             </div>
-            <Button size="sm" className="h-7 text-xs px-2" onClick={() => { setEditTarget(null); reset({ priority: 'medium', status: 'new' }); setShowCreate(true) }}>
-              <Plus size={12} />
-              {t('common.create')}
-            </Button>
           </div>
         </div>
 
-        <div className="flex gap-2 mb-3">
-          <div className="relative flex-1 max-w-xs">
-            <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
-            <Input
-              className="pl-7 h-7 text-xs"
-              placeholder={t('common.search')}
-              value={search}
-              onChange={e => { setSearch(e.target.value); setPage(1); setSelected(new Set()) }}
-            />
+        <div className="flex-shrink-0 px-4 py-2">
+          <div className="flex gap-2 mb-2">
+            <div className="relative flex-1 max-w-xs">
+              <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Input
+                className="pl-7 h-7 text-xs"
+                placeholder={t('common.search')}
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1); setSelected(new Set()) }}
+              />
+            </div>
+            <select
+              className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]"
+              value={filterStatus}
+              onChange={e => { setFilterStatus(e.target.value); setPage(1); setSelected(new Set()) }}
+            >
+              <option value="">상태 전체</option>
+              {STATUSES.map(s => <option key={s} value={s}>{t(`status.${s}`)}</option>)}
+            </select>
+            <select
+              className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]"
+              value={filterPriority}
+              onChange={e => { setFilterPriority(e.target.value); setPage(1); setSelected(new Set()) }}
+            >
+              <option value="">우선순위 전체</option>
+              {PRIORITIES.map(p => <option key={p} value={p}>{t(`priority.${p}`)}</option>)}
+            </select>
           </div>
-          <select
-            className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]"
-            value={filterStatus}
-            onChange={e => { setFilterStatus(e.target.value); setPage(1); setSelected(new Set()) }}
-          >
-            <option value="">상태 전체</option>
-            {STATUSES.map(s => <option key={s} value={s}>{t(`status.${s}`)}</option>)}
-          </select>
-          <select
-            className="border rounded-md px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]"
-            value={filterPriority}
-            onChange={e => { setFilterPriority(e.target.value); setPage(1); setSelected(new Set()) }}
-          >
-            <option value="">우선순위 전체</option>
-            {PRIORITIES.map(p => <option key={p} value={p}>{t(`priority.${p}`)}</option>)}
-          </select>
+
+          {selected.size > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-md mb-2 flex-wrap">
+              <span className="text-xs text-blue-700 font-medium">{selected.size}개 선택됨</span>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-500">상태변경:</span>
+                <select
+                  className="h-6 text-xs border rounded px-1.5 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]"
+                  defaultValue=""
+                  onChange={e => {
+                    if (!e.target.value) return
+                    const status = e.target.value
+                    if (confirm(`선택한 ${selected.size}개를 "${STATUS_LABELS[status]}"으로 변경하시겠습니까?`)) {
+                      bulkStatusMutation.mutate({ ids: [...selected], status })
+                    }
+                    e.target.value = ''
+                  }}
+                >
+                  <option value="">선택...</option>
+                  <option value="new">신규</option>
+                  <option value="review">검토중</option>
+                  <option value="confirmed">확정</option>
+                  <option value="changed">변경</option>
+                  <option value="deleted">삭제</option>
+                </select>
+              </div>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => { if (confirm(`선택한 ${selected.size}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate([...selected]) }}
+                  className="text-xs px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
+                >선택 삭제</button>
+              </div>
+              <button onClick={() => setSelected(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">취소</button>
+            </div>
+          )}
         </div>
 
-        {selected.size > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-md mb-2 flex-wrap">
-            <span className="text-xs text-blue-700 font-medium">{selected.size}개 선택됨</span>
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500">상태변경:</span>
-              <select
-                className="h-6 text-xs border rounded px-1.5 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]"
-                defaultValue=""
-                onChange={e => {
-                  if (!e.target.value) return
-                  const status = e.target.value
-                  if (confirm(`선택한 ${selected.size}개를 "${STATUS_LABELS[status]}"으로 변경하시겠습니까?`)) {
-                    bulkStatusMutation.mutate({ ids: [...selected], status })
-                  }
-                  e.target.value = ''
-                }}
-              >
-                <option value="">선택...</option>
-                <option value="new">신규</option>
-                <option value="review">검토중</option>
-                <option value="confirmed">확정</option>
-                <option value="changed">변경</option>
-                <option value="deleted">삭제</option>
-              </select>
-            </div>
-            <div className="flex gap-1">
-              <button
-                onClick={() => { if (confirm(`선택한 ${selected.size}개를 삭제하시겠습니까?`)) bulkDeleteMutation.mutate([...selected]) }}
-                className="text-xs px-2 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
-              >선택 삭제</button>
-            </div>
-            <button onClick={() => setSelected(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">취소</button>
-          </div>
-        )}
-
+        <div className="overflow-y-auto px-4 pb-4" style={{ maxHeight: "calc(100vh - 140px)" }}>
         {isLoading ? (
           <div className="bg-white rounded-lg border p-6">
             <TableSkeleton rows={5} cols={7} />
@@ -554,6 +559,7 @@ export default function RequirementListPage() {
           limit={50}
           onChange={p => setPage(p)}
         />
+        </div>
       </div>
 
       <Modal
