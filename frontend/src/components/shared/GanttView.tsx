@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { Gantt, ViewMode } from 'gantt-task-react'
 import type { Task as GanttTask } from 'gantt-task-react'
 import 'gantt-task-react/dist/index.css'
@@ -100,6 +100,47 @@ function convertToGanttTasks(
 export function GanttView({ projectId: _projectId, tasks, dependencies, projectStartDate, onDateChange, onProgressChange, onSelect, onDoubleClick }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Day)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const ganttContainerRef = useRef<HTMLDivElement>(null)
+  const [ganttHeight, setGanttHeight] = useState(500)
+
+  useEffect(() => {
+    const update = () => setGanttHeight(Math.max(300, window.innerHeight - 280))
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement
+    if (target.closest('.handleGroup') || target.closest('[class*="_KxSXS"]') || target.closest('[class*="_1KJ6x"]') || target.closest('button')) return
+    const container = ganttContainerRef.current
+    if (!container) return
+
+    const ganttVContainer = container.querySelector('[class*="_CZjuD"]') as HTMLElement
+    const scrollBar = container.querySelector('[class*="_2k9Ys"]') as HTMLElement
+    if (!ganttVContainer) return
+
+    e.preventDefault()
+    const startX = e.clientX
+    const startScrollLeft = ganttVContainer.scrollLeft
+    container.style.cursor = 'grabbing'
+    container.style.userSelect = 'none'
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX
+      const newScroll = startScrollLeft - dx
+      ganttVContainer.scrollLeft = newScroll
+      if (scrollBar) scrollBar.scrollLeft = newScroll
+    }
+    const onUp = () => {
+      container.style.cursor = ''
+      container.style.userSelect = ''
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [])
 
   const toggleGroup = (groupId: string) => {
     setCollapsedGroups(prev => {
@@ -150,7 +191,11 @@ export function GanttView({ projectId: _projectId, tasks, dependencies, projectS
           {allCollapsed ? '전체 펼치기' : '전체 접기'}
         </button>
       </div>
-      <div className="border rounded-lg overflow-hidden bg-white">
+      <div
+        ref={ganttContainerRef}
+        className="border rounded-lg overflow-hidden bg-white cursor-grab"
+        onMouseDown={handleMouseDown}
+      >
         <Gantt
           tasks={ganttTasks}
           viewMode={viewMode}
@@ -162,6 +207,7 @@ export function GanttView({ projectId: _projectId, tasks, dependencies, projectS
           fontSize="12"
           headerHeight={50}
           rowHeight={36}
+          ganttHeight={ganttHeight}
           todayColor="rgba(94, 106, 210, 0.08)"
           onDateChange={onDateChange ? (task) => {
             if (task.type === 'task') onDateChange(task, task.start, task.end)

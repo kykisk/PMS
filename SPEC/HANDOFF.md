@@ -1,4 +1,21 @@
-# PMS 구현 Handoff — 세션 4 추가 작업 내역
+# PMS 구현 Handoff — 세션 5 추가 작업 내역
+
+---
+
+## 세션 5 주요 변경사항
+
+### 1. Gantt 차트 드래그 가로 스크롤
+- 빈 공간을 마우스로 잡고 드래그하면 타임라인이 가로 스크롤
+- 구현: `document` 레벨 mousemove 리스너 + `_CZjuD.scrollLeft` 직접 조작
+- task 바 위에서는 드래그 스크롤 비활성 (라이브러리 바 드래그와 충돌 방지)
+- `_2k9Ys` (HorizontalScroll) scrollLeft 동기화로 라이브러리 내부 상태 연동
+
+### 2. Gantt 차트 헤더(년월일 컬럼) 틀고정
+- `ganttHeight` prop 추가 → 캘린더 헤더 SVG 상단 고정, 차트 body만 세로 스크롤
+- 높이: `window.innerHeight - 280` 동적 계산 (resize 이벤트 대응)
+
+### 3. 파일 변경 목록
+- `frontend/src/components/shared/GanttView.tsx` — 드래그 스크롤 + 헤더 고정
 
 ---
 

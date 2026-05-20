@@ -80,5 +80,22 @@ cd frontend && npx vite preview &
 - `max-w-4xl` 좌우 2패널 구조 (왼쪽: 선택, 오른쪽: 설정+버튼)
 - Step 3 결과: 왼쪽=결과목록, 오른쪽=통계+저장버튼
 
+## Gantt 차트
+- 라이브러리: `gantt-task-react`
+- 컴포넌트: `frontend/src/components/shared/GanttView.tsx`
+- 그룹 접기/펼치기, Dependency (FS/FF/SS/SF), 슬라이드 패널 인라인 편집
+- **드래그 가로 스크롤**: 빈 공간 mousedown → document mousemove → `_CZjuD.scrollLeft` 직접 조작
+  - task 바(`_KxSXS`, `_1KJ6x`, `.handleGroup`) 위에서는 드래그 스크롤 비활성
+  - `_2k9Ys` (HorizontalScroll) scrollLeft 동기화로 라이브러리 상태 연동
+- **헤더 틀고정**: `ganttHeight` prop 사용 → 캘린더 SVG 상단 고정, `_2B2zv`만 세로 스크롤
+  - 높이: `window.innerHeight - 280` 동적 계산
+
+## 사용 포트
+| 포트 | 용도 |
+|------|------|
+| 3000 | PMS Backend (NestJS) |
+| 4173 | PMS Frontend (Vite Preview) |
+| 5432 | PostgreSQL (pms_db_dev container) |
+
 ## 상세 정보
 - `SPEC/HANDOFF.md` — 최신 세션 작업 내역
