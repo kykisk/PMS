@@ -4,9 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Plus, Pencil, Trash2, Search, UserPlus } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, UserPlus, Bot, RotateCcw } from 'lucide-react'
 import { projectApi } from '@/api/project.api'
 import { adminApi } from '@/api/admin.api'
+import apiClient from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -57,7 +58,7 @@ type ExternalFormData = z.infer<typeof externalSchema>
 export default function SettingsPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const qc = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'info' | 'members'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'members' | 'ai'>('info')
   const [showAddMember, setShowAddMember] = useState(false)
   const [showAddExternal, setShowAddExternal] = useState(false)
   const [editExternalId, setEditExternalId] = useState<string | null>(null)
@@ -210,6 +211,17 @@ export default function SettingsPage() {
             )}
           >
             멤버 관리
+          </button>
+          <button
+            onClick={() => setActiveTab('ai')}
+            className={cn(
+              'px-3 py-1.5 text-xs font-medium border-b-2 transition-colors -mb-px',
+              activeTab === 'ai'
+                ? 'border-[#5E6AD2] text-[#5E6AD2]'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            )}
+          >
+            AI 모델 설정
           </button>
         </div>
 
@@ -364,6 +376,10 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+
+        {!isLoading && activeTab === 'ai' && (
+          <AiModelMappingTab projectId={projectId!} />
+        )}
       </div>
 
       <Modal
@@ -508,5 +524,124 @@ function MemberRow({ member, onRoleChange, onDelete }: {
         </button>
       </td>
     </tr>
+  )
+}
+
+const AI_FEATURES = [
+  { key: 'parse-spec', label: 'SPEC 파싱', desc: '마크다운 SPEC → 요구사항/UC/US 추출', recommend: 'Sonnet' },
+  { key: 'generate-features', label: '기능리스트 생성', desc: '요구사항 → 기능리스트 분해', recommend: 'Sonnet' },
+  { key: 'generate-tasks', label: 'Task 생성', desc: '기능 → Task 분해', recommend: 'Haiku' },
+  { key: 'generate-test-scenarios', label: '테스트 시나리오 생성', desc: '요구사항 → 시나리오 (엣지케이스 중요)', recommend: 'Opus' },
+  { key: 'generate-test-cases', label: '테스트 케이스 생성', desc: '시나리오 → 케이스 (steps/expected 상세)', recommend: 'Sonnet' },
+  { key: 'classify-defect', label: '결함 분류 제안', desc: 'Fail 결과 → severity/priority 제안', recommend: 'Haiku' },
+  { key: 'generate-defects', label: '결함 자동 생성', desc: '실패 결과 → 결함 보고서 작성', recommend: 'Sonnet' },
+]
+
+function AiModelMappingTab({ projectId }: { projectId: string }) {
+  const qc = useQueryClient()
+  const [mappings, setMappings] = useState<Record<string, string>>({})
+  const [saved, setSaved] = useState(false)
+
+  const { data: availableModels = [] } = useQuery({
+    queryKey: ['ai-status', projectId],
+    queryFn: () => apiClient.get(`/projects/${projectId}/ai/status`).then(r => r.data.models as { id: string; label: string }[]),
+  })
+
+  const { data: existingMappings = [] } = useQuery({
+    queryKey: ['ai-model-mappings', projectId],
+    queryFn: () => projectApi.getAiModelMappings(projectId),
+  })
+
+  useEffect(() => {
+    if (existingMappings.length > 0) {
+      const m: Record<string, string> = {}
+      existingMappings.forEach((em: any) => { m[em.featureKey] = em.llmConfigId ?? em.userLlmConfigId ?? '' })
+      setMappings(m)
+    }
+  }, [existingMappings.length])
+
+  const saveMutation = useMutation({
+    mutationFn: () => projectApi.saveAiModelMappings(
+      projectId,
+      AI_FEATURES.map(f => ({ featureKey: f.key, llmConfigId: mappings[f.key] || undefined })),
+    ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ai-model-mappings', projectId] })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    },
+  })
+
+  const resetDefaults = () => setMappings({})
+
+  return (
+    <div className="max-w-2xl space-y-3">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs text-gray-500">기능별로 사용할 AI 모델을 지정합니다. 미설정 시 개인 기본 모델 → 공용 모델 순으로 사용됩니다.</p>
+        <button onClick={resetDefaults} className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600">
+          <RotateCcw size={11} />기본값
+        </button>
+      </div>
+
+      <div className="bg-white border rounded-lg overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b">
+            <tr>
+              <th className="text-left px-3 py-2 text-[11px] font-medium text-gray-500 w-48">AI 기능</th>
+              <th className="text-left px-3 py-2 text-[11px] font-medium text-gray-500">모델 선택</th>
+              <th className="text-left px-3 py-2 text-[11px] font-medium text-gray-500 w-20">추천</th>
+            </tr>
+          </thead>
+          <tbody>
+            {AI_FEATURES.map(f => (
+              <tr key={f.key} className="border-b last:border-b-0 hover:bg-gray-50/50">
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-1.5">
+                    <Bot size={12} className="text-[#5E6AD2] flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-medium text-gray-700">{f.label}</p>
+                      <p className="text-[10px] text-gray-400">{f.desc}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-3 py-2">
+                  <select
+                    className="w-full border rounded px-2 h-7 text-xs text-gray-600 focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]"
+                    value={mappings[f.key] ?? ''}
+                    onChange={e => setMappings(prev => ({ ...prev, [f.key]: e.target.value }))}
+                  >
+                    <option value="">-- 기본 모델 사용 --</option>
+                    {availableModels.map((m: any) => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-3 py-2">
+                  <span className={cn(
+                    'text-[10px] px-1.5 py-0.5 rounded border font-medium',
+                    f.recommend === 'Opus' ? 'text-purple-700 bg-purple-50 border-purple-200' :
+                    f.recommend === 'Sonnet' ? 'text-blue-700 bg-blue-50 border-blue-200' :
+                    'text-gray-600 bg-gray-50 border-gray-200'
+                  )}>
+                    {f.recommend}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          size="sm"
+          className="h-7 text-xs px-4 bg-[#5E6AD2] hover:bg-[#4f5bb8]"
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending}
+        >
+          {saved ? '✓ 저장됨' : saveMutation.isPending ? '저장 중...' : '저장'}
+        </Button>
+      </div>
+    </div>
   )
 }

@@ -89,15 +89,12 @@ export const exportApi = {
   apiDesign: (projectId: string) => fetchExcel(`/projects/${projectId}/export/api-design`, 'api-design.xlsx'),
   useCases: (projectId: string) => fetchExcel(`/projects/${projectId}/export/use-cases`, 'use-cases.xlsx'),
   userStories: (projectId: string) => fetchExcel(`/projects/${projectId}/export/user-stories`, 'user-stories.xlsx'),
-  testResult: (projectId: string, cycleId: string) => {
-    window.open(`/api/v1/projects/${projectId}/export/test-result?cycleId=${cycleId}`, '_blank')
-  },
-  testResultPivot: (projectId: string) => {
-    window.open(`/api/v1/projects/${projectId}/export/test-result-pivot`, '_blank')
-  },
-  defectReport: (projectId: string) => {
-    window.open(`/api/v1/projects/${projectId}/export/defect-report`, '_blank')
-  },
+  testResult: (projectId: string, cycleId: string) =>
+    fetchExcel(`/projects/${projectId}/export/test-result?cycleId=${cycleId}`, 'test-result.xlsx'),
+  testResultPivot: (projectId: string) =>
+    fetchExcel(`/projects/${projectId}/export/test-result-pivot`, 'test-result-pivot.xlsx'),
+  defectReport: (projectId: string) =>
+    fetchExcel(`/projects/${projectId}/export/defect-report`, 'defect-report.xlsx'),
   requirementsPdf,
   wbsPdf,
   rtmPdf,

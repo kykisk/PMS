@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, AlertTriangle, Download, Upload, Trash2, RefreshCw } from 'lucide-react'
+import { ChevronLeft, AlertTriangle, Download, Upload, Trash2, RefreshCw, Bot } from 'lucide-react'
 import { testExecutionApi, type TestPhase } from '@/api/test-execution.api'
 import { Button } from '@/components/ui/button'
 import { TableSkeleton } from '@/components/shared/Skeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ImportResultModal } from './ImportResultModal'
+import { AIDefectGenerateModal } from '@/components/shared/AIDefectGenerateModal'
 import AppLayout from '@/components/layout/AppLayout'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -19,6 +20,7 @@ export default function TestPhaseDetailPage() {
   const qc = useQueryClient()
   const [tab, setTab] = useState<'rounds' | 'dashboard'>('rounds')
   const [showImportModal, setShowImportModal] = useState(false)
+  const [showAIDefectModal, setShowAIDefectModal] = useState(false)
 
   const { data: phase, isLoading } = useQuery({
     queryKey: ['test-phase', projectId, phaseId],
@@ -142,6 +144,15 @@ export default function TestPhaseDetailPage() {
               <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => testExecutionApi.exportResult(projectId!, phaseId!)}>
                 <Download size={12} />결과서 Export
               </Button>
+              {rounds.length > 0 && rounds.some(r => (r.failCount + r.blockedCount) > 0) && (
+                <Button
+                  size="sm"
+                  className="h-7 text-xs px-2 bg-[#5E6AD2] hover:bg-[#4f5bb8] ml-auto"
+                  onClick={() => setShowAIDefectModal(true)}
+                >
+                  <Bot size={12} />AI 결함 생성
+                </Button>
+              )}
             </div>
 
             {roundsLoading ? (
@@ -295,6 +306,14 @@ export default function TestPhaseDetailPage() {
           qc.invalidateQueries({ queryKey: ['test-rounds', projectId, phaseId] })
           qc.invalidateQueries({ queryKey: ['test-phase', projectId, phaseId] })
         }}
+      />
+      <AIDefectGenerateModal
+        open={showAIDefectModal}
+        onClose={() => setShowAIDefectModal(false)}
+        projectId={projectId!}
+        phaseId={phaseId!}
+        failCount={rounds.reduce((s, r) => s + r.failCount, 0)}
+        blockedCount={rounds.reduce((s, r) => s + r.blockedCount, 0)}
       />
     </AppLayout>
   )

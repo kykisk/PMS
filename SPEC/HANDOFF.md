@@ -1,4 +1,38 @@
-# PMS 구현 Handoff — 세션 5 추가 작업 내역
+# PMS 구현 Handoff — 세션 6 추가 작업 내역
+
+---
+
+## 세션 6 주요 변경사항
+
+### 1. Export 401 인증 오류 전체 수정
+- `export.api.ts`의 `testResultPivot`, `testResult`, `defectReport` 3개가 `window.open()` 방식이라 Authorization 헤더 미전송 → 401
+- 기존 `fetchExcel()` 패턴 (fetch + Bearer 토큰 + Blob 다운로드)으로 전면 교체
+- **규칙**: 모든 Excel/파일 다운로드는 반드시 `fetchExcel()` 사용, `window.open()` 절대 금지
+
+### 2. AI 결함 자동 생성 (AIDefectGenerateModal)
+- 테스트 수행 상세 페이지에서 Fail/Blocked 결과 존재 시 `[🤖 AI 결함 생성]` 버튼 노출
+- 3단계 모달: 설정 → 검토/편집 → 완료
+- BE 신규 엔드포인트:
+  - `POST /projects/:pid/ai/generate-defects-from-results` — phase Fail/Blocked 결과 + snapshot join → AI 결함 제안
+  - `POST /projects/:pid/ai/save-generated-defects` — 결함 저장 + `TestRoundResult.defectId` 자동 연결
+- 중복 방지: `defectId` 미연결 건만 생성 대상
+- 파일: `frontend/src/components/shared/AIDefectGenerateModal.tsx` (신규)
+
+### 3. AI 기능별 모델 매핑 설정
+- **배경**: 기능마다 최적 모델이 다름 (시나리오생성=Opus, Task분해=Haiku 등)
+- **DB**: `ProjectAiModelMapping` 테이블 신규 (projectId + featureKey unique)
+- **BE 우선순위**: featureKey 매핑 → 수동 modelId → 개인 기본 → 공용
+- **FE**: 프로젝트 설정 → "AI 모델 설정" 탭 신규
+  - 7개 기능 각각 등록된 프로바이더 드롭다운 + 추천 모델 배지
+  - 미설정 시 기존 방식 폴백
+- **API**: `GET/PUT /projects/:pid/ai/model-mappings`
+- **featureKey**: `parse-spec`, `generate-features`, `generate-tasks`, `generate-test-scenarios`, `generate-test-cases`, `classify-defect`, `generate-defects`
+- 파일:
+  - `backend/prisma/schema.prisma` — ProjectAiModelMapping 모델 추가
+  - `backend/src/ai/ai.service.ts` — getModel() featureKey 지원, resolveModelId/getAiModelMappings/saveAiModelMappings 추가
+  - `backend/src/ai/ai.controller.ts` — GET/PUT model-mappings 엔드포인트, 주요 생성 엔드포인트에 mid() 헬퍼 적용
+  - `frontend/src/routes/projects/settings/SettingsPage.tsx` — AI 모델 설정 탭 추가
+  - `frontend/src/api/project.api.ts` — getAiModelMappings/saveAiModelMappings 추가
 
 ---
 

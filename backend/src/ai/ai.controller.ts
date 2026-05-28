@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, UseInterceptors, UploadedFile, Res, Req, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Controller, Post, Get, Put, Body, Param, UseGuards, UseInterceptors, UploadedFile, Res, Req, UsePipes, ValidationPipe } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -15,6 +15,11 @@ import { PrismaService } from '../prisma/prisma.service';
 export class AIController {
   constructor(private aiService: AIService, private prisma: PrismaService) {}
 
+  private async mid(pid: string, featureKey: string, bodyModelId?: string): Promise<string | undefined> {
+    if (bodyModelId) return bodyModelId;
+    return this.aiService.resolveModelId(pid, featureKey);
+  }
+
   @Get('status')
   @ApiOperation({ summary: 'LLM 설정 여부 + 사용 가능 모델 목록' })
   async status(@Req() req: any) {
@@ -23,10 +28,25 @@ export class AIController {
     return { configured: models.length > 0, models };
   }
 
+  @Get('model-mappings')
+  @ApiOperation({ summary: '프로젝트 기능별 AI 모델 매핑 조회' })
+  async getModelMappings(@Param('projectId') pid: string) {
+    return this.aiService.getAiModelMappings(pid);
+  }
+
+  @Put('model-mappings')
+  @ApiOperation({ summary: '프로젝트 기능별 AI 모델 매핑 저장' })
+  async saveModelMappings(
+    @Param('projectId') pid: string,
+    @Body() body: { mappings: { featureKey: string; llmConfigId?: string; userLlmConfigId?: string }[] },
+  ) {
+    return this.aiService.saveAiModelMappings(pid, body.mappings);
+  }
+
   @Post('parse-spec')
   @ApiOperation({ summary: '요구사항 기술서 AI 정제 (최초 Import)' })
-  async parseSpec(@Body() body: { rows: any[]; modelId?: string }, @Req() req: any) {
-    return this.aiService.parseSpec(body.rows, req.user?.id, body.modelId);
+  async parseSpec(@Body() body: { rows: any[]; modelId?: string }, @Param('projectId') pid: string, @Req() req: any) {
+    return this.aiService.parseSpec(body.rows, req.user?.id, await this.mid(pid, 'parse-spec', body.modelId));
   }
 
   @Post('parse-markdown')
@@ -60,7 +80,7 @@ export class AIController {
       analysisContent = diff.changedSections.join('\n\n');
     }
 
-    const result = await this.aiService.parseMarkdown(analysisContent, req.user?.id, body.modelId, existingData, (body as any).additionalInfo);
+    const result = await this.aiService.parseMarkdown(analysisContent, req.user?.id, await this.mid(pid, 'parse-spec', body.modelId), existingData, (body as any).additionalInfo);
 
     const version = existingSpec ? existingSpec.version + 1 : 1;
     await (this.prisma as any).specDocument.create({ data: { projectId: pid, content: body.content, version } });
@@ -85,7 +105,7 @@ export class AIController {
       select: { id: true, code: true, title: true, description: true, reqId: true },
     });
 
-    return this.aiService.generateFeaturesWithContext(requirements, existingFeatures, req.user?.id, body.modelId, (body as any).additionalInfo);
+    return this.aiService.generateFeaturesWithContext(requirements, existingFeatures, req.user?.id, await this.mid(pid, 'generate-features', body.modelId), (body as any).additionalInfo);
   }
 
   @Post('generate-tasks')
@@ -93,7 +113,7 @@ export class AIController {
   async generateTasks(@Body() body: { featureId: string; modelId?: string }, @Param('projectId') pid: string, @Req() req: any) {
     const feat = await this.prisma.feature.findFirst({ where: { id: body.featureId, projectId: pid } });
     if (!feat) return { error: '기능을 찾을 수 없습니다.' };
-    return this.aiService.generateTasks({ title: feat.title, description: feat.description ?? undefined }, req.user?.id, body.modelId, (body as any).additionalInfo);
+    return this.aiService.generateTasks({ title: feat.title, description: feat.description ?? undefined }, req.user?.id, await this.mid(pid, 'generate-tasks', body.modelId), (body as any).additionalInfo);
   }
 
   @Post('generate-tasks-multi')
@@ -106,7 +126,7 @@ export class AIController {
     });
     if (!features.length) return { error: '기능을 찾을 수 없습니다.' };
     const results = await Promise.all(features.map(async feat => {
-      const items = await this.aiService.generateTasks({ title: feat.title, description: feat.description ?? undefined }, req.user?.id, body.modelId, (body as any).additionalInfo).catch(() => []);
+      const items = await this.aiService.generateTasks({ title: feat.title, description: feat.description ?? undefined }, req.user?.id, await this.mid(pid, 'generate-tasks', body.modelId), (body as any).additionalInfo).catch(() => []);
       return (items as any[]).map(item => ({ ...item, _featureCode: feat.code, _featureTitle: feat.title, _featureId: feat.id }));
     }));
     return results.flat();
@@ -140,7 +160,7 @@ export class AIController {
           features: features.map(f => ({ code: f.code, title: f.title, description: f.description ?? undefined })),
           tasks: tasks.map(t => ({ code: t.code, title: t.title, description: t.description ?? undefined })),
         },
-        req.user?.id, body.modelId, (body as any).additionalInfo, body.detailLevel,
+        req.user?.id, await this.mid(pid, 'generate-test-scenarios', body.modelId), (body as any).additionalInfo, body.detailLevel,
       ).catch(() => []);
       return (items as any[]).map(item => ({
         ...item,
@@ -425,7 +445,7 @@ export class AIController {
     if (!scenario) return { error: '시나리오를 찾을 수 없습니다.' };
     return this.aiService.generateTestCases(
       { title: scenario.title, description: scenario.description ?? undefined, type: scenario.type },
-      req.user?.id, body.modelId, body.additionalInfo, body.detailLevel,
+      req.user?.id, await this.mid(pid, 'generate-test-cases', body.modelId), body.additionalInfo, body.detailLevel,
     );
   }
 
@@ -467,7 +487,113 @@ export class AIController {
     return this.aiService.classifyDefect(
       { testCaseTitle: body.testCaseTitle, expected: body.expected, actual: body.actual },
       req.user?.id,
-      body.modelId,
+      await this.mid(pid, 'classify-defect', body.modelId),
     );
+  }
+
+  @Post('generate-defects-from-results')
+  @ApiOperation({ summary: '테스트 수행 실패/차단 결과 → AI 결함 일괄 생성 제안' })
+  async generateDefectsFromResults(
+    @Body() body: { phaseId: string; roundId?: string; resultIds?: string[]; modelId?: string; additionalInfo?: string },
+    @Param('projectId') pid: string,
+    @Req() req: any,
+  ) {
+    const phase = await this.prisma.testPhase.findFirst({ where: { id: body.phaseId, projectId: pid } });
+    if (!phase) return { error: '테스트 회차를 찾을 수 없습니다.' };
+
+    const snapshot = phase.snapshotData as any;
+    const snapshotMap = new Map<string, any>();
+    if (snapshot?.scenarios) {
+      for (const sc of snapshot.scenarios) {
+        for (const c of sc.cases ?? []) {
+          snapshotMap.set(`${sc.code}::${c.title}`, { ...c, scenarioTitle: sc.title, scenarioCode: sc.code });
+        }
+      }
+    }
+
+    const where: any = { round: { phaseId: body.phaseId }, result: { in: ['fail', 'blocked'] }, defectId: null };
+    if (body.roundId) where.roundId = body.roundId;
+    if (body.resultIds?.length) where.id = { in: body.resultIds };
+
+    const failedResults = await this.prisma.testRoundResult.findMany({
+      where,
+      include: { round: { select: { testerName: true, roundNumber: true } } },
+      orderBy: [{ scenarioCode: 'asc' }, { caseIndex: 'asc' }],
+    });
+
+    if (failedResults.length === 0) return [];
+
+    const enriched = failedResults.map(r => {
+      const snap = snapshotMap.get(`${r.scenarioCode}::${r.caseTitle}`) ?? {};
+      return {
+        id: r.id,
+        scenarioCode: r.scenarioCode,
+        scenarioTitle: snap.scenarioTitle ?? r.scenarioCode,
+        caseTitle: r.caseTitle,
+        casePriority: snap.priority ?? 'medium',
+        expected: snap.expected ?? '',
+        actual: r.actual ?? '',
+        steps: snap.steps ?? [],
+        testData: snap.testData ?? '',
+        result: r.result ?? 'fail',
+        testerName: (r.round as any)?.testerName,
+      };
+    });
+
+    const generated = await this.aiService.generateDefectsFromResults(
+      enriched,
+      { title: phase.title, phaseType: phase.phaseType, testerName: enriched[0]?.testerName },
+      req.user?.id,
+      body.modelId,
+      body.additionalInfo,
+    );
+
+    return generated.map((g, i) => ({
+      ...g,
+      _resultId: enriched[i]?.id,
+      _roundId: body.roundId,
+    }));
+  }
+
+  @Post('save-generated-defects')
+  @ApiOperation({ summary: 'AI 생성 결함 저장 + TestRoundResult.defectId 연결' })
+  async saveGeneratedDefects(
+    @Body() body: {
+      defects: { title: string; description?: string; severity?: string; priority?: string; _resultId?: string }[];
+      projectId?: string;
+    },
+    @Param('projectId') pid: string,
+    @Req() req: any,
+  ) {
+    const saved: any[] = [];
+    for (const d of body.defects) {
+      const existing = await this.prisma.defect.findMany({ where: { projectId: pid }, select: { code: true } });
+      const nums = existing.map(e => parseInt(e.code.replace('DF-', ''), 10)).filter(n => !isNaN(n));
+      const nextNum = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+      const code = `DF-${String(nextNum).padStart(3, '0')}`;
+
+      const defect = await this.prisma.defect.create({
+        data: {
+          projectId: pid,
+          code,
+          title: d.title,
+          description: d.description,
+          severity: d.severity ?? 'major',
+          priority: d.priority ?? 'medium',
+          status: 'open',
+          reportedBy: req.user?.email ?? req.user?.id,
+        },
+      });
+
+      if (d._resultId) {
+        await this.prisma.testRoundResult.update({
+          where: { id: d._resultId },
+          data: { defectId: defect.id },
+        });
+      }
+
+      saved.push(defect);
+    }
+    return saved;
   }
 }

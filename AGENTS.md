@@ -23,6 +23,7 @@ PMS/
 ├── frontend/src/
 │   ├── routes/projects/tests/        ← 테스트 시나리오 메뉴
 │   ├── routes/projects/test-execution/ ← 테스트 수행 메뉴
+│   ├── routes/projects/settings/     ← 프로젝트 설정 (AI 모델 매핑 포함)
 │   └── components/shared/            ← AI모달, 공용 컴포넌트
 └── restart-all/be/fe.sh
 ```
@@ -47,7 +48,7 @@ cd frontend && npx vite preview &
 - BE ValidationPipe: whitelist + forbidNonWhitelisted → AI 모달 저장 시 **필요 필드만 명시적 추출** 필수
 - AI parseJSON: `"A".repeat(N)` JS 표현식 치환 처리
 - 코드 자동채번: 문자열 정렬 버그 → 전체 조회 후 숫자 max 계산
-- Export 인증: `window.open()` 금지 → `fetch() + Authorization` + Blob 다운로드
+- Export 인증: `window.open()` 금지 → `fetch() + Authorization` + Blob 다운로드 (`export.api.ts`의 `fetchExcel()` 사용)
 - 목록: 그룹핑 페이지(테스트/기능) = useQuery(limit:2000), Task = useInfiniteQuery
 
 ## 주요 기능
@@ -59,8 +60,9 @@ cd frontend && npx vite preview &
 6. 상위 변경 → outdated 전파 → AI 업데이트 제안
 7. 결함 관리 (7단계 상태전이)
 8. **테스트 수행**: Excel Template 다운로드 → 결과 작성 → Import → 회차 자동 생성
-9. Gantt 차트 (접기/펼치기, Dependency FS/FF/SS/SF)
-10. 추적성(RTM) 관리
+9. **AI 결함 자동 생성**: 테스트 수행 Fail/Blocked → AI → 결함 일괄 등록 + TestRoundResult.defectId 연결
+10. Gantt 차트 (접기/펼치기, Dependency FS/FF/SS/SF, 드래그 스크롤, 헤더 고정)
+11. 추적성(RTM) 관리
 
 ## 테스트 시스템 (중요)
 - **테스트 시나리오 메뉴** = 시나리오/케이스 설계 + AI 생성 (수행 기능 없음)
@@ -69,7 +71,22 @@ cd frontend && npx vite preview &
   - 수동 회차 추가 없음 (Import가 자동 생성)
   - 회차 클릭 → 결과 조회/수정 가능
   - TestPhase.phaseType: integration/system/acceptance
+  - **Fail/Blocked 결과 존재 시 [🤖 AI 결함 생성] 버튼 노출** → AIDefectGenerateModal
 - AI 시나리오 생성: 요구사항 기준, **연결된 기능리스트+Task 컨텍스트 포함**
+
+## AI 기능별 모델 매핑
+- **DB**: `ProjectAiModelMapping` (projectId + featureKey → llmConfigId)
+- **설정 위치**: 프로젝트 설정 → "AI 모델 설정" 탭
+- **우선순위**: featureKey 매핑 → 수동 modelId → 개인 기본 → 공용
+- **featureKey 목록**:
+  - `parse-spec` — SPEC 파싱 (추천: Sonnet)
+  - `generate-features` — 기능리스트 생성 (추천: Sonnet)
+  - `generate-tasks` — Task 생성 (추천: Haiku)
+  - `generate-test-scenarios` — 테스트 시나리오 생성 (추천: Opus)
+  - `generate-test-cases` — 테스트 케이스 생성 (추천: Sonnet)
+  - `classify-defect` — 결함 분류 제안 (추천: Haiku)
+  - `generate-defects` — 결함 자동 생성 (추천: Sonnet)
+- **API**: `GET/PUT /projects/:pid/ai/model-mappings`
 
 ## 사이드 패널 (목록 UX)
 - 요구사항/기능/Task/테스트 목록 행 클릭 → `position: fixed` 우측 패널

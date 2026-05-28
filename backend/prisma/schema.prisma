@@ -67,6 +67,7 @@ model Project {
   changeRequests   ChangeRequest[]
   useCases         UseCase[]
   userStories      UserStory[]
+  aiModelMappings  ProjectAiModelMapping[]
 }
 
 model ProjectMember {
@@ -419,6 +420,22 @@ model ExportTemplate {
   columns   Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ─── AI Feature Model Mapping ──────────────────────────────────
+
+model ProjectAiModelMapping {
+  id              String   @id @default(uuid())
+  projectId       String
+  featureKey      String
+  llmConfigId     String?
+  userLlmConfigId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, featureKey])
 }
 
 model DbTable {

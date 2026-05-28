@@ -67,7 +67,23 @@ export class AIService {
     }
   }
 
-  private async getModel(userId?: string, modelId?: string) {
+  private async getModel(userId?: string, modelId?: string, featureKey?: string, projectId?: string) {
+    if (featureKey && projectId) {
+      const mapping = await this.prisma.projectAiModelMapping.findUnique({
+        where: { projectId_featureKey: { projectId, featureKey } },
+      });
+      if (mapping) {
+        if (mapping.userLlmConfigId) {
+          const cfg = await this.prisma.userLLMConfig.findFirst({ where: { id: mapping.userLlmConfigId } });
+          if (cfg) return this.createModelFromConfig(cfg);
+        }
+        if (mapping.llmConfigId) {
+          const cfg = await this.prisma.lLMConfig.findFirst({ where: { id: mapping.llmConfigId } });
+          if (cfg) return this.createModelFromConfig(cfg);
+        }
+      }
+    }
+
     if (modelId) {
       const personal = await this.prisma.userLLMConfig.findFirst({ where: { id: modelId } });
       if (personal) return this.createModelFromConfig(personal);
@@ -92,6 +108,29 @@ export class AIService {
     const configs = await this.prisma.lLMConfig.findMany({ where: { isActive: true }, orderBy: { updatedAt: 'desc' } });
     if (configs.length === 0) throw new BadRequestException('LLM 설정이 없습니다. 관리자에게 LLM 설정을 요청하세요.');
     return this.createModelFromConfig(configs[0]);
+  }
+
+  async resolveModelId(projectId: string, featureKey: string): Promise<string | undefined> {
+    const mapping = await this.prisma.projectAiModelMapping.findUnique({
+      where: { projectId_featureKey: { projectId, featureKey } },
+    });
+    if (!mapping) return undefined;
+    return mapping.userLlmConfigId ?? mapping.llmConfigId ?? undefined;
+  }
+
+  async getAiModelMappings(projectId: string) {
+    return this.prisma.projectAiModelMapping.findMany({ where: { projectId } });
+  }
+
+  async saveAiModelMappings(projectId: string, mappings: { featureKey: string; llmConfigId?: string; userLlmConfigId?: string }[]) {
+    const ops = mappings.map(m =>
+      this.prisma.projectAiModelMapping.upsert({
+        where: { projectId_featureKey: { projectId, featureKey: m.featureKey } },
+        create: { projectId, featureKey: m.featureKey, llmConfigId: m.llmConfigId || null, userLlmConfigId: m.userLlmConfigId || null },
+        update: { llmConfigId: m.llmConfigId || null, userLlmConfigId: m.userLlmConfigId || null },
+      })
+    );
+    return this.prisma.$transaction(ops);
   }
 
   async getAvailableModels(userId?: string) {
@@ -648,6 +687,60 @@ ${reqList}${existingList}${additionalInfo ? `\n\n=== 추가 지시사항 ===\n${
     });
     try { return this.parseJSON(text); }
     catch { return [{ _rawText: text, _parseError: true }]; }
+  }
+
+  async generateDefectsFromResults(
+    failedResults: {
+      scenarioCode: string;
+      scenarioTitle: string;
+      caseTitle: string;
+      casePriority: string;
+      expected: string;
+      actual: string;
+      steps: any;
+      testData: string;
+      result: string;
+    }[],
+    phaseContext: { title: string; phaseType: string; testerName?: string },
+    userId?: string,
+    modelId?: string,
+    additionalInfo?: string,
+  ): Promise<{ title: string; description: string; severity: string; priority: string; scenarioCode: string; caseTitle: string }[]> {
+    const model = await this.getModel(userId, modelId);
+    const resultList = failedResults.map((r, i) => {
+      const steps = Array.isArray(r.steps) ? r.steps.join('\n  ').trim() : (r.steps ?? '');
+      return `${i + 1}. [${r.scenarioCode}] ${r.scenarioTitle}
+   케이스: ${r.caseTitle}
+   우선순위: ${r.casePriority}
+   결과: ${r.result === 'fail' ? '실패' : '차단'}
+   기대결과: ${r.expected || '미기재'}
+   실제결과: ${r.actual || '미기재'}
+   테스트 데이터: ${r.testData || '없음'}
+   테스트 단계: ${steps || '미기재'}`;
+    }).join('\n\n');
+
+    const { text } = await generateText({
+      model,
+      system: `당신은 소프트웨어 QA 전문가입니다. 테스트 수행에서 실패(Fail)/차단(Blocked)된 케이스를 분석하여 결함 보고서를 작성합니다.
+
+각 케이스마다 결함 1개씩 생성하세요.
+- title: 간결한 결함 제목 (현상 중심, 40자 이내)
+- description: 재현 절차 + 기대 동작 + 실제 동작을 포함한 상세 설명
+- severity: critical | major | minor | trivial (기능 장애 영향도 기준)
+- priority: high | medium | low (수정 시급도 기준)
+- scenarioCode: 원본 시나리오 코드 그대로
+- caseTitle: 원본 케이스명 그대로
+
+출력 형식: JSON 배열 [{"title":"...","description":"...","severity":"...","priority":"...","scenarioCode":"...","caseTitle":"..."}]
+반드시 유효한 JSON 배열만 출력`,
+      prompt: `프로젝트 회차: ${phaseContext.title} (${phaseContext.phaseType})${phaseContext.testerName ? `\n수행자: ${phaseContext.testerName}` : ''}
+
+=== 실패/차단 케이스 목록 ===
+${resultList}${additionalInfo ? `\n\n추가 지시사항:\n${additionalInfo}` : ''}`,
+      maxOutputTokens: 8000,
+    });
+    try { return this.parseJSON(text); }
+    catch { return []; }
   }
 
   async classifyDefect(

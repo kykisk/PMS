@@ -26,6 +26,13 @@ export interface TestRoundResult {
 
 export interface TesterSuggestion { testerName: string; testerDept?: string }
 
+export interface GeneratedDefectSuggestion {
+  title: string; description: string; severity: string; priority: string
+  scenarioCode: string; caseTitle: string
+  _resultId?: string; _roundId?: string
+  selected?: boolean
+}
+
 export const testExecutionApi = {
   listPhases: (projectId: string) =>
     apiClient.get<TestPhase[]>(`/projects/${projectId}/test-phases`).then(r => r.data),
@@ -90,4 +97,8 @@ export const testExecutionApi = {
     const a = document.createElement('a'); a.href = url; a.download = 'test-result-report.xlsx'; a.click()
     URL.revokeObjectURL(url)
   },
+  generateDefectsFromResults: (projectId: string, body: { phaseId: string; roundId?: string; resultIds?: string[]; modelId?: string; additionalInfo?: string }) =>
+    apiClient.post<GeneratedDefectSuggestion[]>(`/projects/${projectId}/ai/generate-defects-from-results`, body).then(r => r.data),
+  saveGeneratedDefects: (projectId: string, defects: Partial<GeneratedDefectSuggestion>[]) =>
+    apiClient.post(`/projects/${projectId}/ai/save-generated-defects`, { defects }).then(r => r.data),
 }

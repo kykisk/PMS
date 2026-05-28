@@ -54,4 +54,8 @@ export const projectApi = {
     apiClient.post(`/projects/${projectId}/audit/clear-outdated-by-feature`, { featureId }).then(r => r.data),
   clearOutdatedScenariosByFeature: (projectId: string, featureId: string) =>
     apiClient.post(`/projects/${projectId}/audit/clear-outdated-scenarios-by-feature`, { featureId }).then(r => r.data),
+  getAiModelMappings: (projectId: string) =>
+    apiClient.get<{ featureKey: string; llmConfigId?: string; userLlmConfigId?: string }[]>(`/projects/${projectId}/ai/model-mappings`).then(r => r.data),
+  saveAiModelMappings: (projectId: string, mappings: { featureKey: string; llmConfigId?: string }[]) =>
+    apiClient.put(`/projects/${projectId}/ai/model-mappings`, { mappings }).then(r => r.data),
 }
