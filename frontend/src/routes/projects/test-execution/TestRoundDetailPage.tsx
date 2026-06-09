@@ -12,10 +12,13 @@ import AppLayout from '@/components/layout/AppLayout'
 
 interface ResultState {
   scenarioCode: string
+  scenarioTitle: string
   caseTitle: string
   caseIndex: number
   result: string
   actual: string
+  expected: string
+  priority: string
   stepResults: any
 }
 
@@ -32,6 +35,7 @@ export default function TestRoundDetailPage() {
   const qc = useQueryClient()
   const [results, setResults] = useState<Record<string, ResultState>>({})
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set())
+  const [filter, setFilter] = useState<'all' | 'empty' | 'pass' | 'fail' | 'blocked'>('all')
   const [defectTarget, setDefectTarget] = useState<{ scenarioCode: string; caseTitle: string } | null>(null)
   const [defectTitle, setDefectTitle] = useState('')
   const [defectSeverity, setDefectSeverity] = useState('major')
@@ -65,10 +69,13 @@ export default function TestRoundDetailPage() {
         const key = `${sc.code}::${tc.index}`
         map[key] = {
           scenarioCode: sc.code,
+          scenarioTitle: sc.title,
           caseTitle: tc.title,
           caseIndex: tc.index,
           result: '',
           actual: '',
+          expected: tc.expected ?? '',
+          priority: tc.priority ?? 'medium',
           stepResults: null,
         }
       })
@@ -107,19 +114,34 @@ export default function TestRoundDetailPage() {
   })
 
   const grouped = useMemo(() => {
-    const groups: Record<string, { scenarioCode: string; cases: ResultState[] }> = {}
-    Object.values(results).forEach(r => {
+    const all = Object.values(results)
+    const filtered = filter === 'all' ? all
+      : filter === 'empty' ? all.filter(r => !r.result)
+      : all.filter(r => r.result === filter)
+
+    const groups: Record<string, { scenarioCode: string; scenarioTitle: string; cases: ResultState[] }> = {}
+    filtered.forEach(r => {
       if (!groups[r.scenarioCode]) {
-        groups[r.scenarioCode] = { scenarioCode: r.scenarioCode, cases: [] }
+        groups[r.scenarioCode] = { scenarioCode: r.scenarioCode, scenarioTitle: r.scenarioTitle, cases: [] }
       }
       groups[r.scenarioCode].cases.push(r)
     })
     Object.values(groups).forEach(g => g.cases.sort((a, b) => a.caseIndex - b.caseIndex))
     return Object.values(groups).sort((a, b) => a.scenarioCode.localeCompare(b.scenarioCode))
-  }, [results])
+  }, [results, filter])
 
   const totalCases = Object.keys(results).length
-  const filledCases = Object.values(results).filter(r => r.result).length
+  const stats = useMemo(() => {
+    const all = Object.values(results)
+    return {
+      pass: all.filter(r => r.result === 'pass').length,
+      fail: all.filter(r => r.result === 'fail').length,
+      blocked: all.filter(r => r.result === 'blocked').length,
+      na: all.filter(r => r.result === 'na').length,
+      empty: all.filter(r => !r.result).length,
+    }
+  }, [results])
+  const filledCases = totalCases - stats.empty
   const progressPercent = totalCases > 0 ? Math.round((filledCases / totalCases) * 100) : 0
 
   const updateResult = (key: string, field: keyof ResultState, value: string) => {
@@ -179,11 +201,25 @@ export default function TestRoundDetailPage() {
           </Button>
         </div>
 
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-3 mb-3">
           <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
             <div className="h-full bg-[#5E6AD2] rounded-full transition-all" style={{ width: `${progressPercent}%` }} />
           </div>
           <span className="text-xs text-gray-500">{filledCases}/{totalCases} ({progressPercent}%)</span>
+        </div>
+
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <div className="inline-flex border border-gray-200 rounded-md overflow-hidden text-[11px] h-6">
+            {([['all', '전체', totalCases], ['empty', '미수행', stats.empty], ['pass', 'Pass', stats.pass], ['fail', 'Fail', stats.fail], ['blocked', 'Blocked', stats.blocked]] as const).map(([key, label, count]) => (
+              <button
+                key={key}
+                onClick={() => setFilter(key)}
+                className={`px-2 flex items-center gap-1 border-r last:border-r-0 transition-colors ${filter === key ? 'bg-[#5E6AD2] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+              >
+                {label} <span className={`font-medium ${filter === key ? 'text-white/80' : key === 'fail' ? 'text-red-500' : key === 'blocked' ? 'text-amber-500' : 'text-gray-400'}`}>{count}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {grouped.length === 0 ? (
@@ -197,8 +233,9 @@ export default function TestRoundDetailPage() {
                 <tr>
                   <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-10">#</th>
                   <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px]">케이스명</th>
-                  <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-28">결과</th>
-                  <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-40">비고</th>
+                  <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-44">기대결과</th>
+                  <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-24">결과</th>
+                  <th className="text-left px-3 py-1.5 font-medium text-gray-500 text-[11px] w-36">비고</th>
                   <th className="w-10 px-3 py-1.5"></th>
                 </tr>
               </thead>
@@ -206,11 +243,10 @@ export default function TestRoundDetailPage() {
                 {grouped.map(group => (
                   <Fragment key={group.scenarioCode}>
                     <tr className="bg-gray-50/80 border-b">
-                      <td colSpan={5} className="px-3 py-1.5">
+                      <td colSpan={6} className="px-3 py-1.5">
                         <span className="font-mono text-[10px] text-[#5E6AD2] mr-2">{group.scenarioCode}</span>
-                        <span className="text-xs font-medium text-gray-700">
-                          {group.cases[0]?.caseTitle?.split(' - ')[0] || group.scenarioCode}
-                        </span>
+                        <span className="text-xs font-medium text-gray-700">{group.scenarioTitle}</span>
+                        <span className="text-[10px] text-gray-400 ml-2">({group.cases.length}건)</span>
                       </td>
                     </tr>
                     {group.cases.map(c => {
@@ -221,6 +257,9 @@ export default function TestRoundDetailPage() {
                           <tr className={`border-b transition-colors ${RESULT_BG[c.result] || ''}`}>
                             <td className="px-3 py-1.5 text-xs text-gray-400">{c.caseIndex}</td>
                             <td className="px-3 py-1.5 text-xs text-gray-700">{c.caseTitle}</td>
+                            <td className="px-3 py-1.5 text-[11px] text-gray-500 truncate max-w-[180px]" title={c.expected}>
+                              {c.expected || <span className="text-gray-300">-</span>}
+                            </td>
                             <td className="px-3 py-1.5">
                               <select
                                 className="border rounded px-2 py-1 text-xs w-full focus:ring-1 focus:ring-[#5E6AD2]/30 focus:border-[#5E6AD2]"
@@ -245,9 +284,9 @@ export default function TestRoundDetailPage() {
                                 {c.result === 'fail' && (
                                   <button
                                     onClick={() => setDefectTarget({ scenarioCode: c.scenarioCode, caseTitle: c.caseTitle })}
-                                    className="text-xs text-red-500 hover:underline ml-1 whitespace-nowrap"
+                                    className="text-[10px] text-red-500 hover:underline whitespace-nowrap"
                                   >
-                                    결함 등록
+                                    결함
                                   </button>
                                 )}
                               </div>
@@ -263,7 +302,7 @@ export default function TestRoundDetailPage() {
                           {hasSteps && expandedSteps.has(key) && (
                             <tr className="border-b bg-gray-50/50">
                               <td></td>
-                              <td colSpan={4} className="px-3 py-2">
+                              <td colSpan={5} className="px-3 py-2">
                                 <div className="space-y-1">
                                   {Object.entries(c.stepResults).map(([stepIdx, stepVal]: [string, any]) => (
                                     <div key={stepIdx} className="flex items-center gap-2 text-[10px]">
